@@ -791,20 +791,20 @@ Idempotency-Key: {uuid}
 **데이터베이스 설계:**
 ```sql
 CREATE TABLE payments (
-    id UUID PRIMARY KEY,
-    order_id UUID NOT NULL,
-    idempotency_key VARCHAR(255) NOT NULL,
-    method VARCHAR(50) NOT NULL,
-    amount BIGINT NOT NULL,
-    status ENUM('PENDING', 'APPROVED', 'FAILED', 'REFUNDED') NOT NULL,
-    transaction_id VARCHAR(255),
-    pg_code VARCHAR(100),
-    fail_reason TEXT,
-    approved_at TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                          id UUID PRIMARY KEY,
+                          order_id UUID NOT NULL,
+                          idempotency_key VARCHAR(255) NOT NULL,
+                          method VARCHAR(50) NOT NULL,
+                          amount BIGINT NOT NULL,
+                          status ENUM('PENDING', 'APPROVED', 'FAILED', 'REFUNDED') NOT NULL,
+                          transaction_id VARCHAR(255),
+                          pg_code VARCHAR(100),
+                          fail_reason TEXT,
+                          approved_at TIMESTAMP,
+                          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                          updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    UNIQUE KEY (order_id, idempotency_key)  -- 중복 방지
+                          UNIQUE KEY (order_id, idempotency_key)  -- 중복 방지
 );
 
 CREATE INDEX idx_payments_idempotency ON payments(idempotency_key);
@@ -1028,33 +1028,33 @@ def release_expired_reservations():
 -- 결제 테이블: Idempotency 보장
 CREATE TABLE payments (
     ...
-    UNIQUE KEY (order_id, idempotency_key)
-);
+     UNIQUE KEY (order_id, idempotency_key)
+    );
 
 -- 예약 재고 추적
 CREATE TABLE reservations (
-    id UUID PRIMARY KEY,
-    order_id UUID NOT NULL,
-    sku VARCHAR(100) NOT NULL,
-    quantity INT NOT NULL,
-    status ENUM('ACTIVE', 'CONFIRMED', 'EXPIRED') NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP NOT NULL,
+                              id UUID PRIMARY KEY,
+                              order_id UUID NOT NULL,
+                              sku VARCHAR(100) NOT NULL,
+                              quantity INT NOT NULL,
+                              status ENUM('ACTIVE', 'CONFIRMED', 'EXPIRED') NOT NULL,
+                              expires_at TIMESTAMP NOT NULL,
+                              created_at TIMESTAMP NOT NULL,
 
-    FOREIGN KEY (order_id) REFERENCES orders(id),
-    INDEX idx_reservations_expires (expires_at)
+                              FOREIGN KEY (order_id) REFERENCES orders(id),
+                              INDEX idx_reservations_expires (expires_at)
 );
 
 -- 결제 실패 로그
 CREATE TABLE payment_failures (
-    id UUID PRIMARY KEY,
-    order_id UUID NOT NULL,
-    reason VARCHAR(255) NOT NULL,
-    pg_code VARCHAR(100),
-    compensation_status ENUM('PENDING', 'COMPENSATED', 'FAILED') NOT NULL,
-    created_at TIMESTAMP NOT NULL,
+                                  id UUID PRIMARY KEY,
+                                  order_id UUID NOT NULL,
+                                  reason VARCHAR(255) NOT NULL,
+                                  pg_code VARCHAR(100),
+                                  compensation_status ENUM('PENDING', 'COMPENSATED', 'FAILED') NOT NULL,
+                                  created_at TIMESTAMP NOT NULL,
 
-    INDEX idx_payment_failures_order (order_id)
+                                  INDEX idx_payment_failures_order (order_id)
 );
 ```
 
@@ -1064,17 +1064,17 @@ CREATE TABLE payment_failures (
 
 ```yaml
 결제 시스템 모니터링:
-  1. Payment Success Rate
-     - 목표: 95% 이상
-     - 알람: 90% 이하 → PagerDuty 알림
+    1. Payment Success Rate
+      - 목표: 95% 이상
+      - 알람: 90% 이하 → PagerDuty 알림
 
-  2. Compensation Transaction
-     - 보상 트랜잭션 발생 건수 추적
-     - 시간당 3건 이상 → 이상 알림
+      2. Compensation Transaction
+      - 보상 트랜잭션 발생 건수 추적
+      - 시간당 3건 이상 → 이상 알림
 
-  3. Inventory Deduction Failure
-     - 재고 차감 실패율
-     - 목표: 0.1% 이하
+      3. Inventory Deduction Failure
+      - 재고 차감 실패율
+      - 목표: 0.1% 이하
 ```
 
 ---
@@ -1430,36 +1430,36 @@ PG사 → Webhook 전송
 ```sql
 -- Webhook 로그 (중복 처리 방지)
 CREATE TABLE webhook_logs (
-    id UUID PRIMARY KEY,
-    event_id VARCHAR(255) NOT NULL UNIQUE,  -- 이벤트 ID로 중복 방지
-    event_type VARCHAR(100) NOT NULL,       -- payment.completed, etc.
-    order_id UUID,                           -- 어떤 주문의 이벤트인지
-    payload JSONB NOT NULL,                  -- 전체 Webhook 데이터
-    status ENUM('PROCESSING', 'QUEUED', 'COMPLETED', 'FAILED') NOT NULL,
-    error_message TEXT,
-    retry_count INT DEFAULT 0,
-    processed_at TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                              id UUID PRIMARY KEY,
+                              event_id VARCHAR(255) NOT NULL UNIQUE,  -- 이벤트 ID로 중복 방지
+                              event_type VARCHAR(100) NOT NULL,       -- payment.completed, etc.
+                              order_id UUID,                           -- 어떤 주문의 이벤트인지
+                              payload JSONB NOT NULL,                  -- 전체 Webhook 데이터
+                              status ENUM('PROCESSING', 'QUEUED', 'COMPLETED', 'FAILED') NOT NULL,
+                              error_message TEXT,
+                              retry_count INT DEFAULT 0,
+                              processed_at TIMESTAMP,
+                              created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                              updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    FOREIGN KEY (order_id) REFERENCES orders(id),
-    INDEX idx_webhook_logs_event_id (event_id),
-    INDEX idx_webhook_logs_status (status),
-    INDEX idx_webhook_logs_order_id (order_id)
+                              FOREIGN KEY (order_id) REFERENCES orders(id),
+                              INDEX idx_webhook_logs_event_id (event_id),
+                              INDEX idx_webhook_logs_status (status),
+                              INDEX idx_webhook_logs_order_id (order_id)
 );
 
 -- Webhook 재시도 큐
 CREATE TABLE webhook_retry_queue (
-    id UUID PRIMARY KEY,
-    event_id VARCHAR(255) NOT NULL,
-    retry_count INT NOT NULL DEFAULT 0,
-    max_retries INT NOT NULL DEFAULT 3,
-    next_retry_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                                     id UUID PRIMARY KEY,
+                                     event_id VARCHAR(255) NOT NULL,
+                                     retry_count INT NOT NULL DEFAULT 0,
+                                     max_retries INT NOT NULL DEFAULT 3,
+                                     next_retry_at TIMESTAMP NOT NULL,
+                                     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                                     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    INDEX idx_retry_queue_next_retry (next_retry_at),
-    FOREIGN KEY (event_id) REFERENCES webhook_logs(event_id)
+                                     INDEX idx_retry_queue_next_retry (next_retry_at),
+                                     FOREIGN KEY (event_id) REFERENCES webhook_logs(event_id)
 );
 ```
 
@@ -1516,22 +1516,22 @@ def retry_failed_webhooks():
 
 ```yaml
 Webhook 모니터링:
-  1. 처리 성공률
-     - 목표: 99.9% 이상
-     - 알람: 99% 이하 → PagerDuty 즉시 알림
+    1. 처리 성공률
+      - 목표: 99.9% 이상
+      - 알람: 99% 이하 → PagerDuty 즉시 알림
 
-  2. 처리 지연시간
-     - 목표: 평균 100ms 이내
-     - 알람: 1초 이상 → 개선 필요
+      2. 처리 지연시간
+      - 목표: 평균 100ms 이내
+      - 알람: 1초 이상 → 개선 필요
 
-  3. 재시도 발생 빈도
-     - 모니터: 시간당 재시도 건수 추적
-     - 알람: 시간당 10건 이상 → 조사 필요
+      3. 재시도 발생 빈도
+      - 모니터: 시간당 재시도 건수 추적
+      - 알람: 시간당 10건 이상 → 조사 필요
 
-  4. 최대 재시도 초과
-     - 심각도: High
-     - 자동 CS 티켓 생성: "Webhook 처리 실패로 주문 상태 미반영"
-     - 수동 처리 필요
+      4. 최대 재시도 초과
+      - 심각도: High
+      - 자동 CS 티켓 생성: "Webhook 처리 실패로 주문 상태 미반영"
+      - 수동 처리 필요
 ```
 
 ---
