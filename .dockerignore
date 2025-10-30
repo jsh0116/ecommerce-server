@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.iml
+*.swp
+*.swo
+*~
+
+# Build
+build/
+.gradle/
+gradle-app.setting
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+.github/
+
+# Test
+src/test/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
