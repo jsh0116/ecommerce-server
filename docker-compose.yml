@@ -1,0 +1,64 @@
+version: '3.9'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hhplus-ecommerce-api
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_APPLICATION_NAME: hhplus-week2
+      SERVER_PORT: 8080
+      JAVA_OPTS: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/swagger-ui.html"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - hhplus-network
+    restart: unless-stopped
+
+  # 옵션: Redis (캐싱/분산 락용)
+  redis:
+    image: redis:7-alpine
+    container_name: hhplus-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - hhplus-network
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  # 옵션: PostgreSQL (데이터베이스)
+  postgres:
+    image: postgres:15-alpine
+    container_name: hhplus-postgres
+    environment:
+      POSTGRES_DB: hhplus
+      POSTGRES_USER: hhplus_user
+      POSTGRES_PASSWORD: hhplus_password
+    ports:
+      - "5432:5432"
+    networks:
+      - hhplus-network
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hhplus_user -d hhplus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  hhplus-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:

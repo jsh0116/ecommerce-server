@@ -1,2 +1,31 @@
 spring:
   application.name: hhplus-week2
+
+# Swagger/OpenAPI Configuration
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+    tryItOutEnabled: true
+    # URL to load the custom YAML file
+    url: /api-docs.yaml
+  api-docs:
+    path: /v3/api-docs
+  show-actuator: false
+  use-management-port: false
+
+# API Documentation
+openapi:
+  app:
+    title: 의류 이커머스 API
+    version: 1.0.0
+    description: 의류 이커머스 플랫폼의 RESTful API
+    contact:
+      name: API Support
+      email: api@fashionstore.com
+      url: https://www.fashionstore.com/support
+    license:
+      name: MIT
+      url: https://opensource.org/licenses/MIT

@@ -22,6 +22,10 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation(libs.spring.boot.starter.web)
+
+    // Swagger UI & OpenAPI (Springdoc)
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.0.2")
+
     annotationProcessor(libs.spring.boot.configuration.processor)
     testImplementation(libs.spring.boot.starter.test)
 }
