@@ -1,11 +1,6 @@
 package io.hhplus.week2.controller
 
-import io.hhplus.week2.domain.Order
-import io.hhplus.week2.domain.OrderItem
 import io.hhplus.week2.domain.OrderStatus
-import io.hhplus.week2.domain.PaymentBreakdown
-import io.hhplus.week2.domain.PaymentInfo
-import io.hhplus.week2.domain.ShippingAddress
 import io.hhplus.week2.dto.CancelOrderRequest
 import io.hhplus.week2.dto.CancelOrderResponse
 import io.hhplus.week2.dto.CreateOrderRequest
@@ -19,7 +14,6 @@ import io.hhplus.week2.dto.VariantInfo
 import io.hhplus.week2.service.OrderService
 import io.hhplus.week2.service.ProductService
 import io.hhplus.week2.service.InventoryService
-import io.hhplus.week2.service.CouponService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -37,7 +31,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.UUID
 
 @RestController
 @RequestMapping("/api/v1/orders")
@@ -45,8 +38,7 @@ import java.util.UUID
 class OrderController(
     private val orderService: OrderService,
     private val productService: ProductService,
-    private val inventoryService: InventoryService,
-    private val couponService: CouponService
+    private val inventoryService: InventoryService
 ) {
 
     private val dateFormatter = DateTimeFormatter.ISO_DATE_TIME
@@ -86,128 +78,31 @@ class OrderController(
         // 사용자 ID 추출 (실제로는 JWT 파싱)
         val userId = "user_001"
 
-        // 1. 변량 정보 및 재고 조회
-        val orderItems = mutableListOf<OrderItem>()
-        var subtotal = 0L
+        // 비즈니스 로직을 서비스에 위임
+        val result = orderService.processCreateOrder(request, userId)
 
-        for (itemRequest in request.items) {
-            val variant = productService.getVariantById(itemRequest.variantId)
-                ?: return ResponseEntity.badRequest()
-                    .body(
-                        mapOf(
-                            "code" to "VARIANT_NOT_FOUND",
-                            "message" to "변량 정보를 찾을 수 없습니다.",
-                            "details" to mapOf("variantId" to itemRequest.variantId)
-                        )
+        if (!result.success) {
+            val statusCode = when (result.errorCode) {
+                "INSUFFICIENT_STOCK" -> HttpStatus.CONFLICT
+                "INVALID_COUPON" -> HttpStatus.BAD_REQUEST
+                "VARIANT_NOT_FOUND", "PRODUCT_NOT_FOUND" -> HttpStatus.BAD_REQUEST
+                else -> HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            return ResponseEntity.status(statusCode)
+                .body(
+                    mapOf(
+                        "code" to result.errorCode,
+                        "message" to result.errorMessage,
+                        "details" to (result.errorDetails ?: emptyMap<String, Any>())
                     )
-
-            val product = productService.getProductById(variant.productId)
-                ?: return ResponseEntity.badRequest()
-                    .body(mapOf("code" to "PRODUCT_NOT_FOUND", "message" to "상품을 찾을 수 없습니다."))
-
-            val itemSubtotal = variant.price * itemRequest.quantity
-
-            orderItems.add(
-                OrderItem(
-                    id = UUID.randomUUID().toString(),
-                    productId = product.id,
-                    variantId = variant.id,
-                    productName = product.name,
-                    quantity = itemRequest.quantity,
-                    price = variant.price,
-                    subtotal = itemSubtotal
                 )
-            )
-
-            subtotal += itemSubtotal
-
-            // 재고 예약
-            val reservation = inventoryService.reserveInventory(variant.sku, itemRequest.quantity, 15)
-            if (reservation == null) {
-                return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(
-                        mapOf(
-                            "code" to "INSUFFICIENT_STOCK",
-                            "message" to "재고가 부족합니다.",
-                            "details" to mapOf(
-                                "sku" to variant.sku,
-                                "requestedQuantity" to itemRequest.quantity
-                            )
-                        )
-                    )
-            }
         }
 
-        // 2. 쿠폰 검증 및 할인 계산
-        var discount = 0L
-        if (request.couponCode != null) {
-            val validationResult = couponService.validateCoupon(request.couponCode, subtotal)
-            if (!validationResult.valid) {
-                return ResponseEntity.badRequest()
-                    .body(
-                        mapOf(
-                            "code" to "INVALID_COUPON",
-                            "message" to validationResult.message,
-                            "details" to validationResult.details
-                        )
-                    )
-            }
-            discount = validationResult.discount
-        }
-
-        // 3. 배송비 계산
-        val shippingFee = calculateShippingFee(request.shippingMethod, subtotal)
-
-        // 4. 최종 금액 계산
-        val pointsUsed = request.pointsToUse
-        val totalAmount = subtotal - discount - pointsUsed + shippingFee
-
-        // 5. 주문 생성
-        val orderId = UUID.randomUUID().toString()
-        val orderNumber = orderService.generateOrderNumber()
-        val reservationExpiry = LocalDateTime.now().plusMinutes(15).format(dateFormatter)
-
-        val order = Order(
-            id = orderId,
-            orderNumber = orderNumber,
-            userId = userId,
-            status = OrderStatus.PENDING_PAYMENT,
-            items = orderItems,
-            payment = PaymentInfo(
-                amount = totalAmount,
-                breakdown = PaymentBreakdown(
-                    subtotal = subtotal,
-                    discount = discount,
-                    pointsUsed = pointsUsed,
-                    shipping = shippingFee,
-                    total = totalAmount
-                ),
-                method = null,
-                status = null
-            ),
-            shippingAddress = ShippingAddress(
-                name = request.shippingAddress.name,
-                phone = request.shippingAddress.phone,
-                address = request.shippingAddress.address,
-                addressDetail = request.shippingAddress.addressDetail,
-                zipCode = request.shippingAddress.zipCode
-            ),
-            shippingMethod = request.shippingMethod,
-            couponCode = request.couponCode,
-            pointsUsed = pointsUsed,
-            subtotal = subtotal,
-            discount = discount,
-            shippingFee = shippingFee,
-            totalAmount = totalAmount,
-            requestMessage = request.requestMessage,
-            reservationExpiry = reservationExpiry,
-            createdAt = LocalDateTime.now().format(dateFormatter)
-        )
-
-        orderService.createOrder(order)
+        val order = result.order!!
 
         // 응답 생성
-        val itemResponses = orderItems.map { item ->
+        val itemResponses = order.items.map { item ->
             OrderItemResponse(
                 id = item.id,
                 productName = item.productName,
@@ -226,19 +121,19 @@ class OrderController(
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(
                 CreateOrderResponse(
-                    id = orderId,
-                    orderNumber = orderNumber,
-                    status = OrderStatus.PENDING_PAYMENT.name,
-                    reservationExpiry = reservationExpiry,
+                    id = order.id,
+                    orderNumber = order.orderNumber,
+                    status = order.status.name,
+                    reservationExpiry = order.reservationExpiry ?: "",
                     items = itemResponses,
                     payment = PaymentResponse(
-                        amount = totalAmount,
+                        amount = order.totalAmount,
                         breakdown = PaymentBreakdownResponse(
-                            subtotal = subtotal,
-                            discount = discount,
-                            pointsUsed = pointsUsed,
-                            shipping = shippingFee,
-                            total = totalAmount
+                            subtotal = order.subtotal,
+                            discount = order.discount,
+                            pointsUsed = order.pointsUsed,
+                            shipping = order.shippingFee,
+                            total = order.totalAmount
                         )
                     ),
                     createdAt = order.createdAt
@@ -376,7 +271,7 @@ class OrderController(
         val order = orderService.getOrderById(orderId)
             ?: return ResponseEntity.notFound().build()
 
-        // 취소 가능 상태 확인
+        // 취소 가능 상태 확인 (비즈니스 로직)
         val cancellable = order.status in listOf(
             OrderStatus.PENDING_PAYMENT,
             OrderStatus.PAID,
@@ -413,13 +308,4 @@ class OrderController(
         )
     }
 
-    private fun calculateShippingFee(shippingMethod: String, subtotal: Long): Long {
-        // 간단한 배송비 계산
-        return when {
-            subtotal >= 30000 -> 0 // 30,000원 이상 무료배송
-            shippingMethod == "dawn" -> 5000 // 새벽배송
-            shippingMethod == "express" -> 4000 // 빠른배송
-            else -> 3000 // 일반배송
-        }
-    }
 }

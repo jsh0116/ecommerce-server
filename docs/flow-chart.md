@@ -140,89 +140,26 @@ flowchart TD
     style RestoreStock1 fill:#FFD700
 ```
 
-### <구매확정, 리뷰, 반품 및 교환>
+### <구매확정 및 리뷰>
 
 ```mermaid
 flowchart TD
     Start([파트3에서 이동]) --> UserAction{고객<br/>액션}
-    
+
     UserAction -->|7일 경과| AutoConfirm[자동 구매 확정]
     UserAction -->|수동 확정| ManualConfirm[구매 확정]
-    UserAction -->|반품 요청| ReturnProcess
-    UserAction -->|교환 요청| ExchangeProcess
-    
+
     AutoConfirm --> PointEarn[포인트 적립]
     ManualConfirm --> PointEarn
     PointEarn --> ReviewRequest{리뷰<br/>작성?}
     ReviewRequest -->|Yes| WriteReview[리뷰 작성]
-    ReviewRequest -->|No| End5
+    ReviewRequest -->|No| End1
     WriteReview --> PhotoReview{포토<br/>리뷰?}
     PhotoReview -->|Yes| BonusPoint[추가 포인트]
-    PhotoReview -->|No| End5
-    BonusPoint --> End5([완료])
-    
-    ReturnProcess[반품 프로세스] --> ReturnReason{반품<br/>사유}
-    ReturnReason -->|단순 변심| ReturnFee1[고객 부담 6000원]
-    ReturnReason -->|불량/오배송| ReturnFee2[무료]
-    
-    ReturnFee1 --> SendBack1[반품 상품 발송]
-    ReturnFee2 --> SendBack1
-    
-    SendBack1 --> ReceiveReturn[반품 상품 도착]
-    ReceiveReturn --> InspectReturn{검수<br/>결과}
-    
-    InspectReturn -->|승인| RefundReturn[환불 처리]
-    InspectReturn -->|거부| ReturnReject[반품 거부<br/>재배송]
-    
-    ReturnReject --> End6([반품 거부])
-    
-    RefundReturn --> RestoreStock2[재고 복구]
-    RestoreStock2 --> DeductFee{배송비<br/>차감?}
-    DeductFee -->|Yes| RefundFinal1[차감 후 환불]
-    DeductFee -->|No| RefundFinal2[전액 환불]
-    
-    RefundFinal1 --> RestoreCoupon2[쿠폰/포인트 복구]
-    RefundFinal2 --> RestoreCoupon2
-    RestoreCoupon2 --> End7([반품 완료])
-    
-    ExchangeProcess[교환 프로세스] --> ExchangeType{교환<br/>유형}
-    ExchangeType -->|사이즈/색상| ExchangeOption[옵션 변경]
-    ExchangeType -->|불량| ExchangeDefect[불량품 교환]
-    
-    ExchangeOption --> CheckExStock{교환 상품<br/>재고?}
-    ExchangeDefect --> CheckExStock
-    
-    CheckExStock -->|있음| ExchangeFee{배송비}
-    CheckExStock -->|없음| ExchangeWait{대기 or<br/>환불?}
-    
-    ExchangeWait -->|대기| WaitRestock[재입고 알림 신청]
-    ExchangeWait -->|환불| RefundExchange[환불 전환]
-    
-    WaitRestock --> End8([대기중])
-    RefundExchange --> RestoreStock2
-    
-    ExchangeFee -->|단순 변심| ExchangeFee1[고객 부담 6000원]
-    ExchangeFee -->|불량/오배송| ExchangeFee2[무료]
-    
-    ExchangeFee1 --> SendBackEx[기존 상품 발송]
-    ExchangeFee2 --> SendBackEx
-    
-    SendBackEx --> ReceiveEx[기존 상품 도착]
-    ReceiveEx --> InspectEx{검수}
-    
-    InspectEx -->|승인| SendNewEx[교환 상품 발송]
-    InspectEx -->|거부| ExchangeReject[교환 거부]
-    
-    ExchangeReject --> End9([교환 거부])
-    SendNewEx --> DeliverEx[교환 상품 배송]
-    DeliverEx --> End10([교환 완료])
-    
-    style Start fill:#fff4e1
-    style End5 fill:#e1f5e1
-    style End6 fill:#ffe1e1
-    style End7 fill:#e1f5e1
-    style End8 fill:#fff4e1
-    style End9 fill:#ffe1e1
-    style End10 fill:#e1f5e1
-    style RestoreStock2 fill:#FFD700
+    PhotoReview -->|No| End1
+    BonusPoint --> End1([완료])
+
+    style Start fill:#fff4e1, color:black
+    style End1 fill:#e1f5e1, color:black
+    style PointEarn fill:#90EE90, color:black
 ```
