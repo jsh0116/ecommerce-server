@@ -9,12 +9,14 @@ springdoc:
     operationsSorter: method
     tagsSorter: alpha
     tryItOutEnabled: true
-    # URL to load the custom YAML file
-    url: /api-docs.yaml
+    use-root-path: false
   api-docs:
     path: /v3/api-docs
   show-actuator: false
   use-management-port: false
+  # Enable automatic OpenAPI schema generation from code
+  auto-schema: true
+  add-openapi-methods: true
 
 # API Documentation
 openapi:

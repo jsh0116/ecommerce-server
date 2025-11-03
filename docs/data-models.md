@@ -41,34 +41,31 @@
 erDiagram
     %% ==================== 사용자 관련 ====================
     USERS ||--o{ ADDRESSES : "has"
-    USERS ||--o{ SIZE_PROFILES : "has"
     USERS ||--o{ CARTS : "has"
     USERS ||--o{ ORDERS : "places"
     USERS ||--o{ USER_COUPONS : "has"
     USERS ||--o{ POINT_HISTORIES : "has"
     USERS ||--o{ REVIEWS : "writes"
     USERS ||--o{ RESTOCK_NOTIFICATIONS : "subscribes"
-    
+
     %% ==================== 상품 관련 ====================
     PRODUCTS ||--o{ PRODUCT_VARIANTS : "has"
     PRODUCT_VARIANTS ||--|| INVENTORY : "tracks"
     PRODUCTS ||--o{ REVIEWS : "receives"
-    
+
     %% ==================== 장바구니 관련 ====================
     CARTS ||--o{ CART_ITEMS : "contains"
     CART_ITEMS }o--|| PRODUCT_VARIANTS : "references"
-    
+
     %% ==================== 주문 관련 ====================
     ORDERS ||--o{ ORDER_ITEMS : "contains"
     ORDERS ||--|| PAYMENTS : "has"
     ORDERS ||--|| SHIPMENTS : "has"
-    ORDERS ||--o{ RETURNS : "has"
-    ORDERS ||--o{ EXCHANGES : "has"
     ORDER_ITEMS }o--|| PRODUCT_VARIANTS : "references"
-    
+
     %% ==================== 쿠폰 관련 ====================
     COUPONS ||--o{ USER_COUPONS : "issued_to"
-    
+
     %% ==================== 리뷰 관련 ====================
     REVIEWS }o--|| ORDERS : "belongs_to"
     REVIEWS }o--|| ORDER_ITEMS : "reviews_item"
@@ -89,10 +86,6 @@ erDiagram
         varchar phone "전화번호 | VARCHAR(20) | NULL"
         enum tier "회원 등급 | ENUM(GENERAL,VIP) | NOT NULL | Default: GENERAL"
         datetime tier_updated_at "등급 변경일 | DATETIME | NULL"
-        varchar social_token "소셜 로그인 토큰 | VARCHAR(255) | NULL"
-        varchar refresh_token "리프레시 토큰 | VARCHAR(255) | NULL"
-        boolean agree_to_terms "약관 동의 | BOOLEAN | NOT NULL"
-        boolean agree_to_marketing "마케팅 동의 | BOOLEAN | NOT NULL | Default: false"
         datetime created_at "생성일 | DATETIME | NOT NULL | DEFAULT NOW()"
         datetime updated_at "수정일 | DATETIME | NOT NULL | DEFAULT NOW()"
         datetime deleted_at "삭제일 | DATETIME | NULL"
@@ -158,7 +151,7 @@ erDiagram
         enum length "길이 | ENUM(SHORT,REGULAR,LONG) | NULL"
         bigint price "가격 | BIGINT | NOT NULL"
         bigint originalPrice "원가 | BIGINT | NOT NULL"
-        json images "변형 이미지 | JSON | NULL"
+        varchar images "변형 이미지 URL | VARCHAR(2000) | NULL"
         boolean isActive "활성화 여부 | BOOLEAN | Default: true"
         datetime regDate "생성일 | DATETIME | NOT NULL | CURRENT_TIMESTAMP"
         datetime modDate "수정일 | DATETIME | NULL | ON UPDATE CURRENT_TIMESTAMP"
@@ -424,11 +417,9 @@ erDiagram
 | email | VARCHAR(255) | UNIQUE, NOT NULL | - | 이메일 (로그인 ID) |
 | password_hash | VARCHAR(255) | NOT NULL | - | 비밀번호 해시 (bcrypt) |
 | name | VARCHAR(100) | NOT NULL | - | 이름 |
-| phone | VARCHAR(20) | NOT NULL | - | 전화번호 |
+| phone | VARCHAR(20) | NULL | - | 전화번호 |
 | tier | ENUM | NOT NULL | 'GENERAL' | 회원 등급 |
 | tier_updated_at | TIMESTAMP | NULL | - | 등급 변경 일시 |
-| agree_to_terms | BOOLEAN | NOT NULL | - | 이용약관 동의 |
-| agree_to_marketing | BOOLEAN | NOT NULL | false | 마케팅 수신 동의 |
 | created_at | TIMESTAMP | NOT NULL | NOW() | 생성 일시 |
 | updated_at | TIMESTAMP | NOT NULL | NOW() | 수정 일시 |
 | deleted_at | TIMESTAMP | NULL | - | 삭제 일시 (소프트 삭제) |
@@ -581,7 +572,7 @@ CREATE INDEX idx_products_deleted_at ON products(deleted_at) WHERE deleted_at IS
 | length | ENUM | NULL | 'regular' | 길이 |
 | price | BIGINT | NOT NULL | - | 판매가 |
 | original_price | BIGINT | NOT NULL | - | 정가 |
-| images | JSONB | NULL | - | 변량별 이미지 |
+| images | VARCHAR(2000) | NULL | - | 변량별 이미지 URL (쉼표 구분) |
 | created_at | TIMESTAMP | NOT NULL | NOW() | 생성 일시 |
 | updated_at | TIMESTAMP | NOT NULL | NOW() | 수정 일시 |
 | deleted_at | TIMESTAMP | NULL | - | 삭제 일시 |

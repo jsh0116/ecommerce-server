@@ -11,8 +11,22 @@ import org.springframework.context.annotation.Configuration
 
 /**
  * OpenAPI/Swagger 설정
- * - Springdoc-OpenAPI가 자동으로 OpenAPI 스키마를 생성
- * - 이 설정에서 추가 메타데이터 정의
+ *
+ * Springdoc-OpenAPI가 컨트롤러의 @Operation, @Parameter 등 어노테이션을 통해
+ * 자동으로 OpenAPI 스키마를 생성합니다.
+ *
+ * 이 설정에서는:
+ * 1. 전역 메타데이터 (제목, 버전, 설명, 연락처 등) 정의
+ * 2. 보안 스킴(JWT Bearer Token) 설정
+ *
+ * API 개발 시 컨트롤러에서 다음 어노테이션을 사용하면 자동 문서화됩니다:
+ * - @Operation: API 엔드포인트 설명
+ * - @Parameter: 요청 파라미터 설명
+ * - @RequestBody: 요청 바디 스키마
+ * - @ApiResponse: 응답 코드별 설명
+ * - @Tag: 엔드포인트 그룹화
+ *
+ * 변경 사항: 정적 YAML 파일 대신 코드 어노테이션 기반 자동 생성으로 전환
  */
 @Configuration
 class OpenApiConfig {
