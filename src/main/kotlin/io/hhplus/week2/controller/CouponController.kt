@@ -3,7 +3,7 @@ package io.hhplus.week2.controller
 import io.hhplus.week2.dto.CouponInfo
 import io.hhplus.week2.dto.ValidateCouponRequest
 import io.hhplus.week2.dto.ValidateCouponResponse
-import io.hhplus.week2.service.CouponService
+import io.hhplus.week2.application.CouponUseCase
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/coupons")
 @Tag(name = "Coupons", description = "쿠폰 API")
 class CouponController(
-    private val couponService: CouponService
+    private val couponUseCase: CouponUseCase
 ) {
 
     @PostMapping("/validate")
@@ -46,7 +46,7 @@ class CouponController(
     fun validateCoupon(
         @RequestBody request: ValidateCouponRequest
     ): ResponseEntity<ValidateCouponResponse> {
-        val result = couponService.validateCoupon(request.couponCode, request.orderAmount)
+        val result = couponUseCase.validateCoupon(request.couponCode, request.orderAmount)
 
         val couponInfo = result.coupon?.let { coupon ->
             CouponInfo(

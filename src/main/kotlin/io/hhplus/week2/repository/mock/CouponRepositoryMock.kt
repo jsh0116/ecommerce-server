@@ -1,86 +1,71 @@
 package io.hhplus.week2.repository.mock
 
 import io.hhplus.week2.domain.Coupon
-import io.hhplus.week2.domain.CouponType
+import io.hhplus.week2.domain.UserCoupon
 import io.hhplus.week2.repository.CouponRepository
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * CouponRepository의 메모리 기반 구현체
- * MockData로 동작합니다.
+ * 테스트용 Mock 데이터로 동작합니다.
  */
 @Repository
 class CouponRepositoryMock : CouponRepository {
 
     private val coupons = ConcurrentHashMap<String, Coupon>()
-    private val dateFormatter = DateTimeFormatter.ISO_DATE_TIME
+    private val userCoupons = ConcurrentHashMap<String, UserCoupon>()
 
     init {
         initializeMockData()
     }
 
     private fun initializeMockData() {
-        // 쿠폰 1: 10,000원 정액 할인
         val coupon1 = Coupon(
-            id = "coupon_001",
-            code = "SUMMER2024",
-            name = "여름 세일 10,000원 할인",
-            type = CouponType.FIXED_AMOUNT,
-            discount = 10000,
-            minOrderAmount = 50000,
-            maxDiscountAmount = null,
-            validFrom = LocalDateTime.now().minusDays(1).format(dateFormatter),
-            validUntil = "2025-12-31T23:59:59Z",
-            maxPerUser = 1,
-            isActive = true
+            id = "C001",
+            name = "신규 회원 10% 할인",
+            discountRate = 10,
+            totalQuantity = 10,
+            issuedQuantity = 0,
+            startDate = LocalDateTime.now().minusDays(1),
+            endDate = LocalDateTime.now().plusDays(30)
         )
-        coupons["SUMMER2024"] = coupon1
+        coupons["C001"] = coupon1
 
-        // 쿠폰 2: 20% 할인
         val coupon2 = Coupon(
-            id = "coupon_002",
-            code = "WELCOME20",
-            name = "신규 회원 20% 할인",
-            type = CouponType.PERCENTAGE,
-            discount = 20,
-            minOrderAmount = 0,
-            maxDiscountAmount = 50000,
-            validFrom = LocalDateTime.now().minusDays(1).format(dateFormatter),
-            validUntil = "2025-12-31T23:59:59Z",
-            maxPerUser = 1,
-            isActive = true
+            id = "C002",
+            name = "여름 세일 20% 할인",
+            discountRate = 20,
+            totalQuantity = 5,
+            issuedQuantity = 0,
+            startDate = LocalDateTime.now().minusDays(1),
+            endDate = LocalDateTime.now().plusDays(7)
         )
-        coupons["WELCOME20"] = coupon2
-
-        // 쿠폰 3: 배송비 무료
-        val coupon3 = Coupon(
-            id = "coupon_003",
-            code = "FREESHIP",
-            name = "배송비 무료 쿠폰",
-            type = CouponType.FREE_SHIPPING,
-            discount = 3000,
-            minOrderAmount = 10000,
-            maxDiscountAmount = null,
-            validFrom = LocalDateTime.now().minusDays(1).format(dateFormatter),
-            validUntil = "2025-12-31T23:59:59Z",
-            maxPerUser = 5,
-            isActive = true
-        )
-        coupons["FREESHIP"] = coupon3
+        coupons["C002"] = coupon2
     }
 
-    override fun findByCode(code: String): Coupon? {
-        return coupons[code]
+    override fun findById(id: String): Coupon? {
+        return coupons[id]
+    }
+
+    override fun findUserCoupon(userId: String, couponId: String): UserCoupon? {
+        return userCoupons.values.find { it.userId == userId && it.couponId == couponId }
+    }
+
+    override fun findUserCouponByCouponId(userId: String, couponId: String): UserCoupon? {
+        return userCoupons.values.find { it.userId == userId && it.couponId == couponId }
+    }
+
+    override fun findUserCoupons(userId: String): List<UserCoupon> {
+        return userCoupons.values.filter { it.userId == userId }
     }
 
     override fun save(coupon: Coupon) {
-        coupons[coupon.code] = coupon
+        coupons[coupon.id] = coupon
     }
 
-    override fun update(coupon: Coupon) {
-        coupons[coupon.code] = coupon
+    override fun saveUserCoupon(userCoupon: UserCoupon) {
+        userCoupons["${userCoupon.userId}:${userCoupon.couponId}"] = userCoupon
     }
 }

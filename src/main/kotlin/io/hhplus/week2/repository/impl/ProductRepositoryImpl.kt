@@ -1,41 +1,33 @@
 package io.hhplus.week2.repository.impl
 
 import io.hhplus.week2.domain.Product
-import io.hhplus.week2.domain.ProductVariant
-import io.hhplus.week2.domain.StockStatus
 import io.hhplus.week2.repository.ProductRepository
 import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Repository
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * ProductRepository의 실제 구현체
+ * ProductRepository의 실제 구현체 (DB 연동 필요)
  */
 @Repository
 @Primary
 class ProductRepositoryImpl : ProductRepository {
 
-    override fun findAll(offset: Int, limit: Int): Pair<List<Product>, Int> {
-        TODO("Not yet implemented")
-    }
+    private val products = ConcurrentHashMap<String, Product>()
 
     override fun findById(id: String): Product? {
-        TODO("Not yet implemented")
+        return products[id]
     }
 
-    override fun findVariantsByProductId(productId: String): List<ProductVariant> {
-        TODO("Not yet implemented")
+    override fun findAll(category: String?, sort: String): List<Product> {
+        return products.values.toList()
     }
 
-    override fun findVariantById(variantId: String): ProductVariant? {
-        TODO("Not yet implemented")
+    override fun findTopSelling(startTimestamp: Long, limit: Int): List<Product> {
+        return products.values.take(limit)
     }
 
     override fun save(product: Product) {
-        TODO("Not yet implemented")
-    }
-
-    override fun saveVariant(variant: ProductVariant) {
-        TODO("Not yet implemented")
+        products[product.id] = product
     }
 }
