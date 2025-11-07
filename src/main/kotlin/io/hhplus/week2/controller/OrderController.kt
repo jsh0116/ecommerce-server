@@ -1,6 +1,7 @@
 package io.hhplus.week2.controller
 
-import io.hhplus.week2.domain.OrderStatus
+import io.hhplus.week2.domain.Order
+import io.hhplus.week2.domain.OrderItem
 import io.hhplus.week2.dto.CancelOrderRequest
 import io.hhplus.week2.dto.CancelOrderResponse
 import io.hhplus.week2.dto.CreateOrderRequest
@@ -11,9 +12,9 @@ import io.hhplus.week2.dto.PaymentBreakdownResponse
 import io.hhplus.week2.dto.PaymentResponse
 import io.hhplus.week2.dto.ShippingResponse
 import io.hhplus.week2.dto.VariantInfo
-import io.hhplus.week2.service.OrderService
-import io.hhplus.week2.service.ProductService
-import io.hhplus.week2.service.InventoryService
+import io.hhplus.week2.application.OrderUseCase
+import io.hhplus.week2.application.ProductUseCase
+import io.hhplus.week2.application.InventoryUseCase
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -36,9 +37,9 @@ import java.time.format.DateTimeFormatter
 @RequestMapping("/api/v1/orders")
 @Tag(name = "Orders", description = "주문 API")
 class OrderController(
-    private val orderService: OrderService,
-    private val productService: ProductService,
-    private val inventoryService: InventoryService
+    private val orderUseCase: OrderUseCase,
+    private val productUseCase: ProductUseCase,
+    private val inventoryUseCase: InventoryUseCase
 ) {
 
     private val dateFormatter = DateTimeFormatter.ISO_DATE_TIME
@@ -75,68 +76,127 @@ class OrderController(
 
         @RequestBody request: CreateOrderRequest
     ): ResponseEntity<Any> {
-        // 사용자 ID 추출 (실제로는 JWT 파싱)
-        val userId = "user_001"
-
-        // 비즈니스 로직을 서비스에 위임
-        val result = orderService.processCreateOrder(request, userId)
-
-        if (!result.success) {
-            val statusCode = when (result.errorCode) {
-                "INSUFFICIENT_STOCK" -> HttpStatus.CONFLICT
-                "INVALID_COUPON" -> HttpStatus.BAD_REQUEST
-                "VARIANT_NOT_FOUND", "PRODUCT_NOT_FOUND" -> HttpStatus.BAD_REQUEST
-                else -> HttpStatus.INTERNAL_SERVER_ERROR
-            }
-
-            return ResponseEntity.status(statusCode)
-                .body(
-                    mapOf(
-                        "code" to result.errorCode,
-                        "message" to result.errorMessage,
-                        "details" to (result.errorDetails ?: emptyMap<String, Any>())
-                    )
-                )
+        // 입력 검증
+        if (request.items.isEmpty()) {
+            return ResponseEntity.badRequest()
+                .body(mapOf("code" to "INVALID_ITEMS", "message" to "최소 1개 이상의 상품이 필요합니다"))
         }
 
-        val order = result.order!!
+        if (!request.agreeToTerms) {
+            return ResponseEntity.badRequest()
+                .body(mapOf("code" to "MUST_AGREE_TERMS", "message" to "약관에 동의해야 합니다"))
+        }
 
-        // 응답 생성
-        val itemResponses = order.items.map { item ->
-            OrderItemResponse(
-                id = item.id,
-                productName = item.productName,
-                variant = VariantInfo(
-                    id = item.variantId,
-                    sku = "", // SKU는 variant 조회로 가능
-                    color = "",
-                    size = ""
-                ),
-                quantity = item.quantity,
-                price = item.price,
-                subtotal = item.subtotal
+        // 각 상품에 대해 재고 확인 및 주문 항목 생성
+        val orderItems = mutableListOf<OrderItemResponse>()
+        var totalAmount = 0L
+
+        for (item in request.items) {
+            val product = productUseCase.getProductById(item.variantId)
+                ?: return ResponseEntity.notFound().build()
+
+            // 재고 확인 (Inventory 사용)
+            val inventory = inventoryUseCase.getInventoryBySku(product.id)
+                ?: return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(
+                        mapOf(
+                            "code" to "INVENTORY_NOT_FOUND",
+                            "message" to "재고 정보를 찾을 수 없습니다: ${product.name}"
+                        )
+                    )
+
+            if (!inventory.canReserve(item.quantity)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(
+                        mapOf(
+                            "code" to "INSUFFICIENT_STOCK",
+                            "message" to "재고 부족: ${product.name} (가용 재고 ${inventory.getAvailableStock()}개)"
+                        )
+                    )
+            }
+
+            val subtotal = product.calculatePrice(item.quantity)
+            totalAmount += subtotal
+
+            orderItems.add(
+                OrderItemResponse(
+                    id = "item_${product.id}",
+                    productName = product.name,
+                    variant = VariantInfo(
+                        id = product.id,
+                        sku = "SKU-${product.id}",
+                        color = "Black",
+                        size = "M"
+                    ),
+                    quantity = item.quantity,
+                    price = product.price,
+                    subtotal = subtotal
+                )
             )
         }
 
+        // 배송료 계산
+        val shippingFee = when (request.shippingMethod) {
+            "express" -> 5000L
+            "dawn" -> 7000L
+            else -> 3000L  // standard
+        }
+
+        // 쿠폰 검증 및 할인 계산
+        var discountAmount = 0L
+        if (!request.couponCode.isNullOrBlank()) {
+            // TODO: CouponService를 통한 쿠폰 검증 로직
+            // val validationResult = couponService.validateCoupon(request.couponCode, totalAmount)
+            // 현재는 간단히 처리
+            discountAmount = 0L
+        }
+
+        // 포인트 사용 처리
+        val pointsUsed = minOf(request.pointsToUse, totalAmount)
+
+        // 최종 결제액 계산
+        val finalAmount = totalAmount - discountAmount - pointsUsed + shippingFee
+
+        // 주문 생성
+        val orderId = "ORD-${System.currentTimeMillis()}"
+        val orderNumber = "ORD-${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"))}-${(System.currentTimeMillis() % 10000).toInt()}"
+
+        val userId = authorization?.substringAfter("Bearer ")?.trim() ?: "user1"
+
+        // UseCase를 통한 주문 생성
+        val orderItemRequests = orderItems.map { itemResponse ->
+            OrderUseCase.OrderItemRequest(
+                productId = itemResponse.variant.id,
+                quantity = itemResponse.quantity
+            )
+        }
+
+        val order = orderUseCase.createOrder(
+            userId = userId,
+            items = orderItemRequests,
+            couponId = if (!request.couponCode.isNullOrBlank()) request.couponCode else null
+        )
+
+        // 응답 생성
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(
                 CreateOrderResponse(
                     id = order.id,
-                    orderNumber = order.orderNumber,
-                    status = order.status.name,
-                    reservationExpiry = order.reservationExpiry ?: "",
-                    items = itemResponses,
+                    orderNumber = orderNumber,
+                    status = order.status,
+                    reservationExpiry = LocalDateTime.now().plusMinutes(15).format(dateFormatter),
+                    items = orderItems,
                     payment = PaymentResponse(
-                        amount = order.totalAmount,
+                        amount = order.finalAmount,
                         breakdown = PaymentBreakdownResponse(
-                            subtotal = order.subtotal,
-                            discount = order.discount,
-                            pointsUsed = order.pointsUsed,
-                            shipping = order.shippingFee,
-                            total = order.totalAmount
+                            subtotal = order.totalAmount,
+                            discount = order.discountAmount,
+                            pointsUsed = pointsUsed,
+                            shipping = shippingFee,
+                            total = order.finalAmount
                         )
                     ),
-                    createdAt = order.createdAt
+                    createdAt = order.createdAt.format(dateFormatter)
                 )
             )
     }
@@ -174,21 +234,21 @@ class OrderController(
         )
         @RequestHeader(required = false) authorization: String?
     ): ResponseEntity<OrderDetailResponse> {
-        val order = orderService.getOrderById(orderId)
+        val order = orderUseCase.getOrderById(orderId)
             ?: return ResponseEntity.notFound().build()
 
         val itemResponses = order.items.map { item ->
             OrderItemResponse(
-                id = item.id,
+                id = item.productId,
                 productName = item.productName,
                 variant = VariantInfo(
-                    id = item.variantId,
-                    sku = "SKU-" + item.variantId,
-                    color = "color",
+                    id = item.productId,
+                    sku = "SKU-${item.productId}",
+                    color = "Black",
                     size = "M"
                 ),
                 quantity = item.quantity,
-                price = item.price,
+                price = item.unitPrice,
                 subtotal = item.subtotal
             )
         }
@@ -196,34 +256,34 @@ class OrderController(
         return ResponseEntity.ok(
             OrderDetailResponse(
                 id = order.id,
-                orderNumber = order.orderNumber,
-                status = order.status.name,
+                orderNumber = "ORD-${order.id}",
+                status = order.status,
                 items = itemResponses,
                 payment = PaymentResponse(
-                    amount = order.payment.amount,
+                    amount = order.finalAmount,
                     breakdown = PaymentBreakdownResponse(
-                        subtotal = order.payment.breakdown.subtotal,
-                        discount = order.payment.breakdown.discount,
-                        pointsUsed = order.payment.breakdown.pointsUsed,
-                        shipping = order.payment.breakdown.shipping,
-                        total = order.payment.breakdown.total
+                        subtotal = order.totalAmount,
+                        discount = order.discountAmount,
+                        pointsUsed = 0L,
+                        shipping = 3000L,
+                        total = order.finalAmount
                     )
                 ),
                 shipping = ShippingResponse(
                     address = io.hhplus.week2.dto.ShippingAddressRequest(
-                        name = order.shippingAddress.name,
-                        phone = order.shippingAddress.phone,
-                        address = order.shippingAddress.address,
-                        addressDetail = order.shippingAddress.addressDetail,
-                        zipCode = order.shippingAddress.zipCode
+                        name = "수령인",
+                        phone = "010-1234-5678",
+                        address = "서울시 강남구",
+                        addressDetail = "상세주소",
+                        zipCode = "12345"
                     ),
-                    method = order.shippingMethod,
-                    fee = order.shippingFee,
+                    method = "standard",
+                    fee = 3000L,
                     trackingNumber = null,
                     carrier = "CJ대한통운",
                     estimatedDelivery = "2025-11-05"
                 ),
-                createdAt = order.createdAt,
+                createdAt = order.createdAt.format(dateFormatter),
                 updatedAt = LocalDateTime.now().format(dateFormatter)
             )
         )
@@ -268,44 +328,34 @@ class OrderController(
         )
         @RequestHeader(required = false) authorization: String?
     ): ResponseEntity<Any> {
-        val order = orderService.getOrderById(orderId)
-            ?: return ResponseEntity.notFound().build()
+        val userId = authorization?.substringAfter("Bearer ")?.trim() ?: "user1"
 
-        // 취소 가능 상태 확인 (비즈니스 로직)
-        val cancellable = order.status in listOf(
-            OrderStatus.PENDING_PAYMENT,
-            OrderStatus.PAID,
-            OrderStatus.PREPARING
-        )
+        return try {
+            // UseCase를 통한 주문 취소 및 재고 복구
+            val cancelledOrder = orderUseCase.cancelOrder(orderId, userId)
 
-        if (!cancellable) {
-            return ResponseEntity.badRequest()
+            // 환불금액 계산
+            val refundAmount = cancelledOrder.finalAmount
+
+            // 환불 예상 일자 계산 (업무일 기준 2~3일)
+            val estimatedRefundDate = LocalDateTime.now().plusDays(3).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+
+            ResponseEntity.ok(
+                CancelOrderResponse(
+                    message = "주문이 취소되었습니다.",
+                    refundAmount = refundAmount,
+                    estimatedRefundDate = estimatedRefundDate
+                )
+            )
+        } catch (e: IllegalStateException) {
+            ResponseEntity.badRequest()
                 .body(
                     mapOf(
                         "code" to "CANNOT_CANCEL",
-                        "message" to "이미 배송이 시작되어 취소할 수 없습니다. 반품을 신청해주세요."
+                        "message" to e.message
                     )
                 )
         }
-
-        // 주문 상태 업데이트
-        orderService.updateOrderStatus(orderId, OrderStatus.CANCELLED)
-
-        // 재고 복구 (예약 해제)
-        for (item in order.items) {
-            val variant = productService.getVariantById(item.variantId)
-            if (variant != null) {
-                inventoryService.cancelReservation(variant.sku, item.quantity)
-            }
-        }
-
-        return ResponseEntity.ok(
-            CancelOrderResponse(
-                message = "주문이 취소되었습니다.",
-                refundAmount = order.totalAmount,
-                estimatedRefundDate = "2025-11-10"
-            )
-        )
     }
 
 }
