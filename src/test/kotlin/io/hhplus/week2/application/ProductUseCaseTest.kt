@@ -122,23 +122,23 @@ class ProductUseCaseTest {
     @DisplayName("인기 상품을 조회할 수 있다")
     fun testGetTopProducts() {
         // Given
-        val days = 7
         val limit = 5
-        val topProducts = listOf(
-            Product("prod1", "인기상품1", "설명1", 500_000L, "전자제품"),
-            Product("prod2", "인기상품2", "설명2", 300_000L, "전자제품")
+        val allProducts = listOf(
+            Product("prod1", "인기상품1", "설명1", 500_000L, "전자제품", viewCount = 100, salesCount = 50),
+            Product("prod2", "인기상품2", "설명2", 300_000L, "전자제품", viewCount = 80, salesCount = 30),
+            Product("prod3", "인기상품3", "설명3", 400_000L, "전자제품", viewCount = 50, salesCount = 10)
         )
 
-        every { productRepository.findTopSelling(any(), limit) } returns topProducts
+        every { productRepository.findAll(null, "newest") } returns allProducts
 
         // When
-        val result = productUseCase.getTopProducts(days, limit)
+        val result = productUseCase.getTopProducts(limit)
 
         // Then
-        assert(result.period == "7days")
-        assert(result.products.size == 2)
-        assert(result.products[0].id == "prod1")
-        verify { productRepository.findTopSelling(any(), limit) }
+        assert(result.products.size == 3)
+        assert(result.products[0].rank == 1)
+        assert(result.products[0].product.id == "prod1")  // 가장 높은 인기도
+        verify { productRepository.findAll(null, "newest") }
     }
 
     @Test
@@ -243,5 +243,130 @@ class ProductUseCaseTest {
             productUseCase.checkStock(productId, quantity)
         }
         assert(exception.message?.contains("재고 정보를 찾을 수 없습니다") ?: false)
+    }
+
+    @Test
+    @DisplayName("상품 조회 시 조회수가 증가한다")
+    fun testViewProduct() {
+        // Given
+        val productId = "prod1"
+        val product = Product(
+            id = productId,
+            name = "노트북",
+            description = "고성능 노트북",
+            price = 1_000_000L,
+            category = "전자제품",
+            viewCount = 10
+        )
+
+        every { productRepository.findById(productId) } returns product
+        every { productRepository.save(any()) } returnsArgument 0
+
+        // When
+        val result = productUseCase.viewProduct(productId)
+
+        // Then
+        assert(result.id == productId)
+        assert(result.viewCount == 11L) // 조회수 증가 확인
+        verify { productRepository.save(any()) }
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 상품 조회 시 예외를 발생시킨다")
+    fun testViewProductNotFound() {
+        // Given
+        val productId = "nonexistent"
+
+        every { productRepository.findById(productId) } returns null
+
+        // When & Then
+        val exception = assertThrows<IllegalStateException> {
+            productUseCase.viewProduct(productId)
+        }
+        assert(exception.message?.contains("상품을 찾을 수 없습니다") ?: false)
+    }
+
+    @Test
+    @DisplayName("판매량 기록 - 판매량이 증가한다")
+    fun testRecordSale() {
+        // Given
+        val productId = "prod1"
+        val quantity = 5
+        val product = Product(
+            id = productId,
+            name = "노트북",
+            description = "고성능 노트북",
+            price = 1_000_000L,
+            category = "전자제품",
+            salesCount = 10
+        )
+
+        every { productRepository.findById(productId) } returns product
+        every { productRepository.save(any()) } returnsArgument 0
+
+        // When
+        productUseCase.recordSale(productId, quantity)
+
+        // Then
+        assert(product.salesCount == 15L) // 판매량 증가 확인
+        verify { productRepository.save(any()) }
+    }
+
+    @Test
+    @DisplayName("판매량 기록 - 존재하지 않는 상품 시 예외를 발생시킨다")
+    fun testRecordSaleProductNotFound() {
+        // Given
+        val productId = "nonexistent"
+        val quantity = 5
+
+        every { productRepository.findById(productId) } returns null
+
+        // When & Then
+        val exception = assertThrows<IllegalStateException> {
+            productUseCase.recordSale(productId, quantity)
+        }
+        assert(exception.message?.contains("상품을 찾을 수 없습니다") ?: false)
+    }
+
+    @Test
+    @DisplayName("기간별 최상위 판매 상품 조회")
+    fun testGetTopSellingProducts() {
+        // Given
+        val days = 7
+        val limit = 5
+        val topSellingProducts = listOf(
+            Product("prod1", "베스트셀러1", "설명1", 100_000L, "의류", viewCount = 50, salesCount = 100),
+            Product("prod2", "베스트셀러2", "설명2", 80_000L, "의류", viewCount = 40, salesCount = 80),
+            Product("prod3", "베스트셀러3", "설명3", 60_000L, "의류", viewCount = 30, salesCount = 60)
+        )
+
+        every { productRepository.findTopSelling(any(), limit) } returns topSellingProducts
+
+        // When
+        val result = productUseCase.getTopSellingProducts(days, limit)
+
+        // Then
+        assert(result.products.size == 3)
+        assert(result.products[0].rank == 1)
+        assert(result.products[0].product.id == "prod1")
+        assert(result.products[0].salesCount == 100L)
+        verify { productRepository.findTopSelling(any(), limit) }
+    }
+
+    @Test
+    @DisplayName("기간별 최상위 판매 상품 조회 - 결과 없음")
+    fun testGetTopSellingProductsEmpty() {
+        // Given
+        val days = 7
+        val limit = 5
+
+        every { productRepository.findTopSelling(any(), limit) } returns emptyList()
+
+        // When
+        val result = productUseCase.getTopSellingProducts(days, limit)
+
+        // Then
+        assert(result.products.isEmpty())
+        verify { productRepository.findTopSelling(any(), limit) }
     }
 }

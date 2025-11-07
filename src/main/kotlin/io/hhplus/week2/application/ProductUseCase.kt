@@ -43,17 +43,79 @@ class ProductUseCase(
     }
 
     /**
-     * 인기 상품 조회
+     * 상품 조회 (조회수 증가)
      */
-    fun getTopProducts(days: Int, limit: Int): TopProductResponse {
+    fun viewProduct(productId: String): Product {
+        val product = productRepository.findById(productId)
+            ?: throw IllegalStateException("상품을 찾을 수 없습니다")
+
+        // 조회수 증가
+        product.incrementViewCount()
+        productRepository.save(product)
+
+        return product
+    }
+
+    /**
+     * 판매량 증가 (주문 완료 시 호출)
+     */
+    fun recordSale(productId: String, quantity: Int) {
+        val product = productRepository.findById(productId)
+            ?: throw IllegalStateException("상품을 찾을 수 없습니다")
+
+        // 판매량 증가
+        product.incrementSalesCount(quantity)
+        productRepository.save(product)
+    }
+
+    /**
+     * 인기 상품 조회 (조회수 및 판매량 기반 순위 계산)
+     *
+     * 인기도 점수 = (판매량 × 10) + 조회수
+     * - 판매량에 더 높은 가중치를 부여하여 실제 구매로 이어진 상품을 우선
+     */
+    fun getTopProducts(limit: Int = 5): TopProductResponse {
+        // 전체 상품 조회
+        val allProducts = productRepository.findAll(null, "newest")
+
+        // 인기도 점수 기준으로 정렬 및 상위 N개 선택
+        val topProducts = allProducts
+            .sortedByDescending { it.calculatePopularityScore() }
+            .take(limit)
+            .mapIndexed { index, product ->
+                TopProductItem(
+                    rank = index + 1,
+                    product = product,
+                    popularityScore = product.calculatePopularityScore(),
+                    viewCount = product.viewCount,
+                    salesCount = product.salesCount
+                )
+            }
+
+        return TopProductResponse(products = topProducts)
+    }
+
+    /**
+     * 최근 판매량 기준 인기 상품 조회 (기간별)
+     */
+    fun getTopSellingProducts(days: Int, limit: Int): TopProductResponse {
         // 조회 기간 계산
         val now = System.currentTimeMillis()
         val from = now - (days * 24L * 60 * 60 * 1000)
 
-        // 상위 판매 상품 조회
+        // 상위 판매 상품 조회 (Repository에서 기간별 집계 지원 시)
         val topProducts = productRepository.findTopSelling(from, limit)
+            .mapIndexed { index, product ->
+                TopProductItem(
+                    rank = index + 1,
+                    product = product,
+                    popularityScore = product.calculatePopularityScore(),
+                    viewCount = product.viewCount,
+                    salesCount = product.salesCount
+                )
+            }
 
-        return TopProductResponse("${days}days", topProducts)
+        return TopProductResponse(products = topProducts)
     }
 
     /**
@@ -76,6 +138,16 @@ class ProductUseCase(
         )
     }
 
-    data class TopProductResponse(val period: String, val products: List<Product>)
+    // 응답 DTO
+    data class TopProductResponse(val products: List<TopProductItem>)
+
+    data class TopProductItem(
+        val rank: Int,
+        val product: Product,
+        val popularityScore: Long,
+        val viewCount: Long,
+        val salesCount: Long
+    )
+
     data class StockCheckResponse(val available: Boolean, val currentStock: Int, val requested: Int)
 }

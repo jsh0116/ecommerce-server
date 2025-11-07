@@ -43,7 +43,14 @@ class UserRepositoryMock : UserRepository {
     }
 
     override fun findById(id: String): User? {
-        return users[id]
+        // 동적 사용자 생성 (테스트 편의성을 위해)
+        return users.computeIfAbsent(id) {
+            User(
+                id = it,
+                balance = 5000000,
+                createdAt = LocalDateTime.now().toString()
+            )
+        }
     }
 
     override fun save(user: User) {

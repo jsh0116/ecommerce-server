@@ -24,7 +24,8 @@ class OrderUseCase(
     private val userRepository: UserRepository,
     private val couponRepository: CouponRepository,
     private val inventoryRepository: InventoryRepository,
-    private val dataTransmissionService: DataTransmissionService?
+    private val dataTransmissionService: DataTransmissionService?,
+    private val productUseCase: ProductUseCase
 ) {
     /**
      * 주문 생성
@@ -185,7 +186,7 @@ class OrderUseCase(
         user.balance = user.balance - order.finalAmount
         userRepository.save(user)
 
-        // 재고 차감 (Product ID를 SKU로 사용)
+        // 재고 차감 및 판매량 증가 (Product ID를 SKU로 사용)
         for (item in order.items) {
             val inventory = inventoryRepository.findBySku(item.productId)
                 ?: throw IllegalStateException("재고 정보를 찾을 수 없습니다: ${item.productId}")
@@ -193,6 +194,9 @@ class OrderUseCase(
             // 실제 재고 차감
             inventory.confirmReservation(item.quantity)
             inventoryRepository.save(inventory)
+
+            // 판매량 증가 (인기 상품 집계용)
+            productUseCase.recordSale(item.productId, item.quantity)
         }
 
         // 쿠폰 사용 처리

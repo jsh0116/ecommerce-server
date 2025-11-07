@@ -19,6 +19,7 @@ class OrderUseCaseTest {
     private lateinit var couponRepository: CouponRepository
     private lateinit var inventoryRepository: InventoryRepository
     private lateinit var dataTransmissionService: DataTransmissionService
+    private lateinit var productUseCase: ProductUseCase
 
     @BeforeEach
     fun setUp() {
@@ -28,6 +29,7 @@ class OrderUseCaseTest {
         couponRepository = mockk()
         inventoryRepository = mockk()
         dataTransmissionService = mockk()
+        productUseCase = mockk()
 
         orderUseCase = OrderUseCase(
             orderRepository,
@@ -35,7 +37,8 @@ class OrderUseCaseTest {
             userRepository,
             couponRepository,
             inventoryRepository,
-            dataTransmissionService
+            dataTransmissionService,
+            productUseCase
         )
     }
 
@@ -220,6 +223,7 @@ class OrderUseCaseTest {
         every { inventoryRepository.save(any()) } returnsArgument 0
         every { couponRepository.findUserCoupon(any(), any()) } returns null
         every { dataTransmissionService.send(any()) } returns Unit
+        every { productUseCase.recordSale(any(), any()) } just Runs
 
         // When
         val result = orderUseCase.processPayment(orderId, userId)
@@ -232,6 +236,7 @@ class OrderUseCaseTest {
         assert(order.status == "PAID")
         verify { userRepository.save(any()) }
         verify { inventoryRepository.save(any()) }
+        verify { productUseCase.recordSale(productId, 2) }
     }
 
     @Test
@@ -431,6 +436,7 @@ class OrderUseCaseTest {
         every { inventoryRepository.save(any()) } returnsArgument 0
         every { couponRepository.saveUserCoupon(any()) } returnsArgument 0
         every { dataTransmissionService.send(any()) } returns Unit
+        every { productUseCase.recordSale(any(), any()) } just Runs
 
         // When
         val result = orderUseCase.processPayment(orderId, userId)
@@ -439,6 +445,7 @@ class OrderUseCaseTest {
         assert(result.paidAmount == 1_800_000L)
         assert(result.remainingBalance == 3_200_000L)
         verify { couponRepository.saveUserCoupon(any()) }
+        verify { productUseCase.recordSale(productId, 2) }
     }
 
     @Test
@@ -481,6 +488,7 @@ class OrderUseCaseTest {
         every { couponRepository.findUserCoupon(any(), any()) } returns null
         every { dataTransmissionService.send(any()) } throws RuntimeException("전송 실패")
         every { dataTransmissionService.addToRetryQueue(any()) } returns Unit
+        every { productUseCase.recordSale(any(), any()) } just Runs
 
         // When
         val result = orderUseCase.processPayment(orderId, userId)
@@ -489,6 +497,7 @@ class OrderUseCaseTest {
         assert(result.status == "SUCCESS")
         assert(order.status == "PAID")
         verify { dataTransmissionService.addToRetryQueue(any()) }
+        verify { productUseCase.recordSale(productId, 2) }
     }
 
     @Test
