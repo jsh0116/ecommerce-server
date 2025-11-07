@@ -26,34 +26,28 @@ class InventoryRepositoryMock : InventoryRepository {
         // 재고 정보
         val inv1 = Inventory(
             sku = "LEVI-501-BLK-32-REG",
-            available = 15,
-            reserved = 0,
-            physical = 20,
+            physicalStock = 20,
+            reservedStock = 0,
             safetyStock = 5,
-            status = StockStatus.IN_STOCK,
-            lastUpdated = LocalDateTime.now().format(dateFormatter)
+            lastUpdated = LocalDateTime.now()
         )
         inventory["LEVI-501-BLK-32-REG"] = inv1
 
         val inv2 = Inventory(
             sku = "LEVI-501-BLK-34-REG",
-            available = 3,
-            reserved = 0,
-            physical = 5,
+            physicalStock = 5,
+            reservedStock = 0,
             safetyStock = 2,
-            status = StockStatus.LOW_STOCK,
-            lastUpdated = LocalDateTime.now().format(dateFormatter)
+            lastUpdated = LocalDateTime.now()
         )
         inventory["LEVI-501-BLK-34-REG"] = inv2
 
         val inv3 = Inventory(
             sku = "NIKE-270-WHT-270-REG",
-            available = 8,
-            reserved = 0,
-            physical = 10,
+            physicalStock = 10,
+            reservedStock = 0,
             safetyStock = 2,
-            status = StockStatus.IN_STOCK,
-            lastUpdated = LocalDateTime.now().format(dateFormatter)
+            lastUpdated = LocalDateTime.now()
         )
         inventory["NIKE-270-WHT-270-REG"] = inv3
     }

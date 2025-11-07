@@ -5,7 +5,7 @@ import io.hhplus.week2.dto.DeductInventoryResponse
 import io.hhplus.week2.dto.InventoryResponse
 import io.hhplus.week2.dto.ReserveInventoryRequest
 import io.hhplus.week2.dto.ReserveInventoryResponse
-import io.hhplus.week2.service.InventoryService
+import io.hhplus.week2.application.InventoryUseCase
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/inventory")
 @Tag(name = "Inventory", description = "재고 관리 API")
 class InventoryController(
-    private val inventoryService: InventoryService
+    private val inventoryUseCase: InventoryUseCase
 ) {
 
     @GetMapping("/skus/{sku}")
@@ -54,18 +54,18 @@ class InventoryController(
         )
         @PathVariable sku: String
     ): ResponseEntity<InventoryResponse> {
-        val inventory = inventoryService.getInventoryBySku(sku)
+        val inventory = inventoryUseCase.getInventoryBySku(sku)
             ?: return ResponseEntity.notFound().build()
 
         return ResponseEntity.ok(
             InventoryResponse(
                 sku = inventory.sku,
-                available = inventory.available,
-                reserved = inventory.reserved,
-                physical = inventory.physical,
+                available = inventory.getAvailableStock(),
+                reserved = inventory.reservedStock,
+                physical = inventory.physicalStock,
                 safetyStock = inventory.safetyStock,
-                status = inventory.status.name,
-                lastUpdated = inventory.lastUpdated
+                status = inventory.getStatus().name,
+                lastUpdated = inventory.lastUpdated.toString()
             )
         )
     }
@@ -94,7 +94,7 @@ class InventoryController(
     fun reserveInventory(
         @RequestBody request: ReserveInventoryRequest
     ): ResponseEntity<Any> {
-        val reservation = inventoryService.reserveInventory(request.sku, request.quantity, 15)
+        val reservation = inventoryUseCase.reserveInventory(request.sku, request.quantity, 15)
 
         return if (reservation != null) {
             ResponseEntity.ok(
@@ -145,14 +145,14 @@ class InventoryController(
     fun deductInventory(
         @RequestBody request: DeductInventoryRequest
     ): ResponseEntity<Any> {
-        val success = inventoryService.deductInventory(request.sku, request.quantity)
+        val success = inventoryUseCase.deductInventory(request.sku, request.quantity)
 
         return if (success) {
-            val inventory = inventoryService.getInventoryBySku(request.sku)!!
+            val inventory = inventoryUseCase.getInventoryBySku(request.sku)!!
             ResponseEntity.ok(
                 DeductInventoryResponse(
                     sku = request.sku,
-                    remainingStock = inventory.available,
+                    remainingStock = inventory.getAvailableStock(),
                     success = true,
                     message = "재고 차감 완료"
                 )
@@ -192,15 +192,15 @@ class InventoryController(
     fun cancelReservation(
         @RequestBody request: ReserveInventoryRequest
     ): ResponseEntity<Any> {
-        val success = inventoryService.cancelReservation(request.sku, request.quantity)
+        val success = inventoryUseCase.cancelReservation(request.sku, request.quantity)
 
         return if (success) {
-            val inventory = inventoryService.getInventoryBySku(request.sku)!!
+            val inventory = inventoryUseCase.getInventoryBySku(request.sku)!!
             ResponseEntity.ok(
                 mapOf(
                     "message" to "예약 취소 완료",
                     "sku" to request.sku,
-                    "availableStock" to inventory.available
+                    "availableStock" to inventory.getAvailableStock()
                 )
             )
         } else {
