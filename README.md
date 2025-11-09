@@ -18,7 +18,7 @@
 
 ```bash
 ./gradlew bootJar
-java -jar build/libs/hhplus-week2-0.0.1-SNAPSHOT.jar
+java -jar build/libs/hhplus-ecommerce-0.0.1-SNAPSHOT.jar
 ```
 
 ### 2. Swagger UI 접근

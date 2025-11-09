@@ -9,7 +9,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_APPLICATION_NAME: hhplus-week2
+      SPRING_APPLICATION_NAME: hhplus-ecommerce
       SERVER_PORT: 8080
       JAVA_OPTS: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
     healthcheck:

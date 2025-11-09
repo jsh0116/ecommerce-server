@@ -4,14 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**hhplus-week2** is an e-commerce platform built with Spring Boot 3.2.0 and Kotlin, implementing a clothing retail system with product management, inventory control, order processing, and coupon functionality. The project follows clean architecture principles with domain-driven design.
+**hhplus-ecommerce** is an e-commerce platform built with Spring Boot 3.2.0 and Kotlin, implementing a clothing retail system with product management, inventory control, order processing, and coupon functionality. The project follows clean architecture principles with domain-driven design and layered architecture.
 
 - **Language:** Kotlin 1.9.21
 - **Framework:** Spring Boot 3.2.0
 - **Build Tool:** Gradle 8.4+ (Kotlin DSL)
 - **Java Target:** Java 17
-- **Package Root:** `io.hhplus.week2`
+- **Package Root:** `io.hhplus.ecommerce`
 - **API Documentation:** Swagger/OpenAPI (Springdoc) at `/swagger-ui.html`
+- **Server Port:** 8080 (default)
 
 ## Common Development Commands
 
@@ -37,7 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Running the Application
 ```bash
 ./gradlew bootRun                  # Run application in development mode (server starts on port 8080)
-java -jar build/libs/hhplus-week2-0.0.1-SNAPSHOT.jar  # Run compiled JAR
+java -jar build/libs/hhplus-ecommerce-0.0.1-SNAPSHOT.jar  # Run compiled JAR
 ```
 
 ### Docker
@@ -68,50 +69,55 @@ docker run -p 8080:8080 hhplus-ecommerce:latest  # Run container
 The project follows a clean architecture / layered architecture pattern:
 
 ```
-src/main/kotlin/io/hhplus/week2/
-├── Week2Application.kt              (Spring Boot entry point)
+src/main/kotlin/io/hhplus/ecommerce/
+├── EcommerceApplication.kt              (Spring Boot entry point)
 ├── ApiControllerAdvice.kt           (Global exception handler)
 │
-├── controller/                       (Presentation Layer - REST endpoints)
-│   ├── ProductController.kt         (Product APIs)
-│   ├── OrderController.kt           (Order APIs)
-│   ├── CouponController.kt          (Coupon APIs)
-│   └── InventoryController.kt       (Inventory APIs)
+├── presentation/                     (Presentation Layer - REST endpoints)
+│   └── controllers/
+│       ├── ProductController.kt     (Product APIs)
+│       ├── OrderController.kt       (Order APIs)
+│       ├── CouponController.kt      (Coupon APIs)
+│       └── InventoryController.kt   (Inventory APIs)
 │
 ├── application/                      (Application Layer - Use cases/orchestration)
-│   ├── ProductUseCase.kt            (Product business workflows)
-│   ├── OrderUseCase.kt              (Order creation & payment workflows)
-│   └── CouponUseCase.kt             (Coupon issuance & validation)
-│
-├── service/                          (Service Layer - Business logic)
-│   ├── ProductService.kt
-│   ├── OrderService.kt
-│   ├── CouponService.kt
-│   ├── InventoryService.kt
-│   └── impl/                        (Service implementations)
+│   ├── usecases/
+│   │   ├── ProductUseCase.kt        (Product business workflows)
+│   │   ├── OrderUseCase.kt          (Order creation & payment workflows)
+│   │   └── CouponUseCase.kt         (Coupon issuance & validation)
+│   │
+│   └── services/
+│       ├── ProductService.kt        (Product business logic)
+│       ├── OrderService.kt          (Order business logic)
+│       ├── CouponService.kt         (Coupon business logic)
+│       ├── InventoryService.kt      (Inventory business logic)
+│       └── impl/                    (Service implementations)
 │
 ├── domain/                           (Domain Layer - Business entities & logic)
 │   ├── Product.kt                   (Product entity with business methods)
 │   ├── Order.kt                     (Order entity with state management)
 │   ├── Coupon.kt                    (Coupon entity with validation logic)
-│   └── Inventory.kt                 (Inventory entity with stock management)
+│   ├── Inventory.kt                 (Inventory entity with stock management)
+│   └── User.kt                      (User entity)
 │
-├── repository/                       (Data Access Layer - Persistence interfaces)
-│   ├── ProductRepository.kt
-│   ├── OrderRepository.kt
-│   ├── CouponRepository.kt
-│   ├── InventoryRepository.kt
-│   ├── UserRepository.kt
-│   ├── impl/                        (Repository implementations)
-│   └── mock/                        (Mock implementations for testing)
-│
-├── infrastructure/                   (Infrastructure Layer - External services)
-│   ├── cache/
+├── infrastructure/                   (Infrastructure Layer - Persistence & external services)
+│   ├── repositories/                (Data Access Layer - Repository implementations)
+│   │   └── memory/                  (In-memory mock implementations for testing)
+│   │       ├── ProductRepositoryMemory.kt
+│   │       ├── OrderRepositoryMemory.kt
+│   │       ├── CouponRepositoryMemory.kt
+│   │       ├── InventoryRepositoryMemory.kt
+│   │       └── UserRepositoryMemory.kt
+│   │
+│   ├── cache/                        (Caching layer)
 │   │   ├── CacheService.kt
-│   │   └── impl/MockCacheService.kt
-│   └── service/
+│   │   └── impl/
+│   │       └── MockCacheService.kt
+│   │
+│   └── services/
 │       ├── DataTransmissionService.kt
-│       └── impl/MockDataTransmissionService.kt
+│       └── impl/
+│           └── MockDataTransmissionService.kt
 │
 ├── dto/                              (Data Transfer Objects)
 │   ├── ProductDtos.kt               (Request/Response DTOs for products)
@@ -178,12 +184,12 @@ The project includes a comprehensive testing setup with:
 - **Database Testing:** Pre-configured MySQL TestContainers bundle
 - **Code Coverage:** JaCoCo (v0.8.7) enabled for code coverage analysis
 
-Tests should be placed in `src/test/kotlin/io/hhplus/week2/` and follow the same package structure as the main source code.
+Tests should be placed in `src/test/kotlin/io/hhplus/ecommerce/` and follow the same package structure as the main source code.
 
 ### Configuration
 
 - **Configuration File:** `src/main/resources/application.yml`
-- **Application Name:** hhplus-week2
+- **Application Name:** hhplus-ecommerce
 - **Gradle Properties:** `gradle.properties` contains build settings and application metadata
   - Build caching and parallel builds enabled for faster builds
   - JVM max heap: 2GB
@@ -241,11 +247,28 @@ This e-commerce platform implements the following business capabilities:
    - Order status update to PAID
    - External data transmission (with retry queue on failure)
 
+## Architecture Evolution & Refactoring
+
+The codebase recently underwent a significant refactoring to improve architectural clarity and separation of concerns:
+
+### Key Changes
+1. **Layer Reorganization**:
+   - Created explicit `presentation/controllers/` layer for REST endpoints
+   - Separated `application/usecases/` from business logic in `application/services/`
+   - Consolidated repositories under `infrastructure/repositories/memory/` for in-memory implementations
+2. **Service Architecture**: Services now implement business logic with clear interfaces, supporting both in-memory and future database implementations
+3. **Test Structure**: Test package hierarchy mirrors main source code for easier navigation
+
+### Migration Notes
+- All feature branches and development work should use the new `io.hhplus.ecommerce` package structure
+- Import statements have been updated throughout the codebase
+- Swagger/OpenAPI configuration and endpoint paths remain unchanged
+
 ## Development Notes
 
 1. **Null Safety:** The Kotlin compiler is configured with `-Xjsr305=strict` for Spring's null-safety annotations.
 
-2. **Component Scanning:** Spring automatically scans the `io.hhplus.week2` package and subpackages for components (controllers, services, repositories, etc.).
+2. **Component Scanning:** Spring automatically scans the `io.hhplus.ecommerce` package and subpackages for components (controllers, services, repositories, etc.).
 
 3. **Error Responses:** All exceptions return the standardized `ErrorResponse` format. Customize exception handling by adding specific `@ExceptionHandler` methods to `ApiControllerAdvice`.
 
@@ -253,7 +276,7 @@ This e-commerce platform implements the following business capabilities:
 
 5. **Code Style:** Official Kotlin code style is enforced via `kotlin.code.style=official` in gradle.properties.
 
-6. **Mock Repositories:** The project uses in-memory mock repositories (in `repository/mock/`) for development and testing. Real database implementations should be created in `repository/impl/` when needed.
+6. **In-Memory Repositories:** The project uses in-memory repository implementations (in `infrastructure/repositories/memory/`) for development and testing. These provide fast, non-persistent storage suitable for unit tests and local development. Real database implementations (using Spring Data JPA, etc.) can be added when needed for production use.
 
 7. **Data Classes:** Kotlin data classes are heavily used for domain entities, DTOs, and value objects. They provide built-in `equals()`, `hashCode()`, `toString()`, and `copy()` methods.
 

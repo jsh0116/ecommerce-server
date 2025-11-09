@@ -27,7 +27,7 @@ LABEL description="의류 이커머스 API 서버"
 WORKDIR /app
 
 # 빌드 스테이지에서 JAR 파일 복사
-COPY --from=builder /build/build/libs/hhplus-week2-*.jar app.jar
+COPY --from=builder /build/build/libs/hhplus-ecommerce-*.jar app.jar
 
 # 리소스 복사 (Swagger, application.yml 등)
 COPY --from=builder /build/src/main/resources /app/resources

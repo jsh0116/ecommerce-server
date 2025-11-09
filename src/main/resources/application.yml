@@ -1,5 +1,5 @@
 spring:
-  application.name: hhplus-week2
+  application.name: hhplus-ecommerce
 
 # Swagger/OpenAPI Configuration
 springdoc:
