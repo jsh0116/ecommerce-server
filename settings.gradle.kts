@@ -12,4 +12,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "hhplus-week2"
+rootProject.name = "hhplus-ecommerce"

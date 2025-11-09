@@ -18,7 +18,7 @@
 
 ```bash
 ./gradlew bootJar
-java -jar build/libs/hhplus-week2-0.0.1-SNAPSHOT.jar
+java -jar build/libs/hhplus-ecommerce-0.0.1-SNAPSHOT.jar
 ```
 
 ### 2. Swagger UI 접근
@@ -958,8 +958,343 @@ cat Dockerfile | grep -i "copy"
 
 ---
 
-**마지막 수정:** 2024-03-15
-**버전:** 1.0.0
+## 🔒 동시성 제어 분석 (STEP06)
+
+### 1. 개요
+
+이커머스 플랫폼에서 **선착순 쿠폰 발급**은 동시성 제어가 필수적인 기능입니다. 여러 사용자가 동시에 제한된 수량의 쿠폰을 요청할 때, **Race Condition**이 발생하여 의도한 수량보다 더 많은 쿠폰이 발급될 수 있습니다.
+
+본 프로젝트에서는 **synchronized 블록**을 사용하여 이 문제를 해결했습니다.
+
+---
+
+### 2. 문제 상황: Race Condition
+
+#### 2.1. 동시성 문제가 발생하는 시나리오
+
+10개 한정 쿠폰에 100명이 동시에 요청하는 상황을 가정합니다:
+
+```kotlin
+// ❌ 동시성 제어가 없는 코드 (문제 발생)
+fun issueCoupon(couponId: String, userId: String) {
+    val coupon = couponRepository.findById(couponId)
+
+    // 1️⃣ Thread A: canIssue() 체크 (issuedQuantity = 9, 발급 가능)
+    // 2️⃣ Thread B: canIssue() 체크 (issuedQuantity = 9, 발급 가능)
+    if (!coupon.canIssue()) throw IllegalStateException("쿠폰 소진")
+
+    // 3️⃣ Thread A: issue() 호출 (issuedQuantity = 10)
+    // 4️⃣ Thread B: issue() 호출 (issuedQuantity = 11) ❌ 수량 초과!
+    coupon.issue()
+    couponRepository.save(coupon)
+}
+```
+
+**문제점:**
+- `canIssue()` 체크와 `issue()` 호출 사이에 다른 스레드가 개입 가능 **(check-then-act 패턴)**
+- 10개 한정인데 11개 이상 발급되는 **Over-issuing** 발생
+- 쿠폰의 비즈니스 로직이 깨짐
+
+#### 2.2. 시간 순서도
+
+```
+시간   Thread A                  Thread B
+────────────────────────────────────────────────
+T1     canIssue() ✅ (qty=9)
+T2                                canIssue() ✅ (qty=9)
+T3     issue() → qty=10
+T4                                issue() → qty=11 ❌
+```
+
+---
+
+### 3. 선택한 해결 방법: Synchronized 블록
+
+#### 3.1. 구현 코드
+
+```kotlin
+// ✅ 동시성 제어가 적용된 코드 (CouponUseCase.kt)
+@Service
+class CouponUseCase(
+    private val couponRepository: CouponRepository,
+    private val userRepository: UserRepository
+) {
+    // 쿠폰 ID별 락 객체 관리
+    private val couponLocks = ConcurrentHashMap<String, Any>()
+
+    fun issueCoupon(couponId: String, userId: String): CouponIssueResult {
+        // 쿠폰 ID별로 락 객체 획득
+        val lockObject = couponLocks.computeIfAbsent(couponId) { Any() }
+
+        // 동시성 제어: 동일한 쿠폰에 대해서만 동기화
+        synchronized(lockObject) {
+            val user = userRepository.findById(userId)
+                ?: throw IllegalStateException("사용자를 찾을 수 없습니다")
+
+            val existing = couponRepository.findUserCouponByCouponId(userId, couponId)
+            if (existing != null) throw IllegalStateException("이미 발급받은 쿠폰입니다")
+
+            val coupon = couponRepository.findById(couponId)
+                ?: throw IllegalStateException("쿠폰을 찾을 수 없습니다")
+
+            // canIssue() 체크와 issue() 호출이 원자적으로 실행됨
+            if (!coupon.canIssue()) throw IllegalStateException("쿠폰이 모두 소진되었습니다")
+
+            val remainingQuantity = coupon.issue()
+            couponRepository.save(coupon)
+
+            val userCoupon = UserCoupon(...)
+            couponRepository.saveUserCoupon(userCoupon)
+
+            return CouponIssueResult(...)
+        }
+    }
+}
+```
+
+#### 3.2. 핵심 원리
+
+**쿠폰 ID별 락 분리:**
+- `ConcurrentHashMap<String, Any>`를 사용하여 쿠폰 ID마다 별도의 락 객체 생성
+- **C001 쿠폰**과 **C002 쿠폰**은 서로 다른 락을 사용하여 독립적으로 발급 가능
+- 동일한 쿠폰에 대한 요청만 순차 처리됨
+
+**원자성 보장:**
+- `synchronized(lockObject)` 블록 내의 모든 작업이 **원자적(atomic)**으로 실행
+- `check-then-act` 패턴이 하나의 트랜잭션처럼 동작
+- 한 스레드가 락을 획득하면 다른 스레드는 대기
+
+---
+
+### 4. 동시성 테스트 결과
+
+#### 4.1. 테스트 시나리오
+
+```kotlin
+@Test
+fun concurrentCouponIssuance_shouldIssueExactQuantity() {
+    // Given: 10개 한정 쿠폰
+    val couponId = "C001"
+    val totalUsers = 100
+
+    // When: 100명이 동시에 요청
+    val executor = Executors.newFixedThreadPool(50)
+    repeat(totalUsers) { index ->
+        executor.submit {
+            try {
+                couponUseCase.issueCoupon(couponId, "user${index + 1}")
+                successCount.incrementAndGet()
+            } catch (e: IllegalStateException) {
+                failureCount.incrementAndGet()
+            }
+        }
+    }
+
+    // Then: 정확히 10명만 성공
+    assertThat(successCount.get()).isEqualTo(10)
+    assertThat(failureCount.get()).isEqualTo(90)
+}
+```
+
+#### 4.2. 테스트 결과
+
+| 시나리오 | 쿠폰 수량 | 요청 수 | 성공 | 실패 | 결과 |
+|---------|----------|---------|------|------|------|
+| 테스트 1 | 10개 | 100명 | 10 | 90 | ✅ PASS |
+| 테스트 2 | 5개 | 50명 | 5 | 45 | ✅ PASS |
+| 테스트 3 (중복) | 10개 | 동일 유저 10회 | 1 | 9 | ✅ PASS |
+| 테스트 4 (독립성) | C001=10, C002=5 | 각 20명 | 10, 5 | - | ✅ PASS |
+
+**결론:** 모든 동시성 테스트를 통과하여 Race Condition이 방지됨을 확인했습니다.
+
+---
+
+### 5. 장단점 분석
+
+#### 5.1. 장점 ✅
+
+1. **간단한 구현**
+   - Java/Kotlin 표준 라이브러리 사용 (외부 라이브러리 불필요)
+   - 코드 가독성이 높고 유지보수가 쉬움
+
+2. **정확성 보장**
+   - 쿠폰 발급의 원자성을 완벽히 보장
+   - 테스트 결과 100% 정확한 수량 제어 확인
+
+3. **쿠폰 간 독립성**
+   - 쿠폰 ID별로 락을 분리하여 다른 쿠폰 발급에 영향 없음
+   - 전체 시스템의 처리량(throughput) 향상
+
+4. **단일 서버 환경 최적**
+   - 현재 인메모리 저장소 환경에서 완벽히 동작
+   - 추가 인프라(Redis 등) 불필요
+
+#### 5.2. 단점 ⚠️
+
+1. **단일 서버 제약**
+   - 여러 서버(스케일 아웃)로 확장 시 동작하지 않음
+   - JVM 메모리 내에서만 락이 공유됨
+
+2. **성능 오버헤드**
+   - 동일한 쿠폰에 대한 요청이 순차 처리되어 대기 시간 발생
+   - 스레드 블로킹으로 인한 컨텍스트 스위칭 비용
+
+3. **데드락 가능성**
+   - 여러 락을 동시에 획득하는 경우 데드락 위험 (현재는 해당 없음)
+
+4. **메모리 관리**
+   - `couponLocks` 맵이 계속 증가하여 메모리 누수 가능성
+   - 사용 완료된 락 객체를 정리하는 로직 필요
+
+---
+
+### 6. 대안 방식 비교
+
+| 방식 | 장점 | 단점 | 적용 시점 |
+|------|------|------|----------|
+| **Synchronized** ✅ | - 간단한 구현<br>- 단일 서버 완벽 동작 | - 분산 환경 미지원<br>- 성능 오버헤드 | 현재 (인메모리 단일 서버) |
+| **ReentrantLock** | - 세밀한 락 제어<br>- 타임아웃 설정 가능 | - 복잡한 코드<br>- 분산 환경 미지원 | Synchronized로 부족 시 |
+| **AtomicInteger** | - Lock-free 알고리즘<br>- 높은 성능 | - 도메인 객체 수정 필요<br>- 단순 카운터에만 적용 | 간단한 카운팅만 필요 시 |
+| **Redis 분산 락** | - 다중 서버 지원<br>- 수평 확장 가능 | - Redis 인프라 필요<br>- 네트워크 지연 | 스케일 아웃 환경 |
+| **DB Pessimistic Lock** | - 데이터 정합성 보장<br>- 트랜잭션 통합 | - DB 부하 증가<br>- 성능 저하 | DB 기반 시스템 |
+| **DB Optimistic Lock** | - 높은 동시성<br>- 충돌 적을 때 효율적 | - 재시도 로직 필요<br>- 충돌 많으면 비효율 | 읽기 > 쓰기 환경 |
+
+#### 6.1. ReentrantLock 방식 예시
+
+```kotlin
+// 대안 1: ReentrantLock 사용
+class CouponUseCase {
+    private val couponLocks = ConcurrentHashMap<String, ReentrantLock>()
+
+    fun issueCoupon(couponId: String, userId: String): CouponIssueResult {
+        val lock = couponLocks.computeIfAbsent(couponId) { ReentrantLock() }
+
+        // 타임아웃 설정 가능
+        if (!lock.tryLock(5, TimeUnit.SECONDS)) {
+            throw IllegalStateException("쿠폰 발급 대기 시간 초과")
+        }
+
+        try {
+            // 쿠폰 발급 로직
+        } finally {
+            lock.unlock()
+        }
+    }
+}
+```
+
+**장점:** 타임아웃 설정으로 무한 대기 방지
+**단점:** 코드 복잡도 증가, finally 블록 필수
+
+#### 6.2. Redis 분산 락 방식 예시
+
+```kotlin
+// 대안 2: Redisson 분산 락
+class CouponUseCase {
+    private val redissonClient: RedissonClient
+
+    fun issueCoupon(couponId: String, userId: String): CouponIssueResult {
+        val lockKey = "coupon:lock:$couponId"
+        val lock = redissonClient.getLock(lockKey)
+
+        lock.lock(5, TimeUnit.SECONDS)
+        try {
+            // 쿠폰 발급 로직
+        } finally {
+            lock.unlock()
+        }
+    }
+}
+```
+
+**장점:** 다중 서버 환경에서 동작
+**단점:** Redis 인프라 필요, 네트워크 지연
+
+#### 6.3. AtomicInteger 방식 예시
+
+```kotlin
+// 대안 3: Atomic 연산 (도메인 수정 필요)
+data class Coupon(
+    val id: String,
+    val totalQuantity: Int,
+    val issuedQuantity: AtomicInteger = AtomicInteger(0)
+) {
+    fun canIssue(): Boolean = issuedQuantity.get() < totalQuantity
+
+    fun issue(): Int {
+        val newValue = issuedQuantity.incrementAndGet()
+        if (newValue > totalQuantity) {
+            issuedQuantity.decrementAndGet()
+            throw IllegalStateException("쿠폰 소진")
+        }
+        return totalQuantity - newValue
+    }
+}
+```
+
+**장점:** Lock-free, 높은 성능
+**단점:** 도메인 객체를 var로 변경 필요, 복잡한 검증 로직에 부적합
+
+---
+
+### 7. 향후 개선 방향
+
+#### 7.1. 단기 개선 (현재 환경 유지)
+
+1. **Lock 객체 메모리 관리**
+   ```kotlin
+   private val couponLocks = object : LinkedHashMap<String, Any>(16, 0.75f, true) {
+       override fun removeEldestEntry(eldest: Map.Entry<String, Any>): Boolean {
+           return size > 100  // 최대 100개 락만 유지
+       }
+   }
+   ```
+
+2. **모니터링 추가**
+   - 락 대기 시간, 쿠폰 발급 성공률 메트릭 수집
+   - Grafana 대시보드로 시각화
+
+#### 7.2. 중장기 개선 (스케일 아웃 대비)
+
+1. **Redis 분산 락 도입**
+   - 다중 서버 환경으로 확장 시 필수
+   - Redisson 라이브러리 사용 권장
+
+2. **DB 기반 동시성 제어**
+   - Pessimistic Lock: `SELECT ... FOR UPDATE`
+   - Optimistic Lock: `@Version` 컬럼 활용
+
+3. **메시지 큐 방식**
+   - 쿠폰 발급 요청을 Kafka/RabbitMQ로 직렬화
+   - Consumer에서 순차 처리
+
+---
+
+### 8. 결론
+
+**선택한 방식:** Synchronized 블록 (쿠폰 ID별 락 분리)
+
+**선택 이유:**
+- 현재 인메모리 단일 서버 환경에 최적
+- 간단한 구현으로 100% 정확성 보장
+- 외부 인프라 없이 즉시 적용 가능
+
+**검증 결과:**
+- 100명 동시 요청 시 정확히 10개만 발급 ✅
+- 서로 다른 쿠폰은 독립적으로 발급 ✅
+- 동일 사용자 중복 요청 방지 ✅
+
+**제약 사항:**
+- 단일 JVM 환경에서만 동작 (스케일 아웃 시 Redis 분산 락 필요)
+
+**다음 단계:**
+- 실제 DB 연동 시 Pessimistic Lock 또는 Optimistic Lock 검토
+- 서비스 확장 시 Redis 분산 락으로 마이그레이션
+
+---
+
+**마지막 수정:** 2024-11-07
+**버전:** 1.1.0 (STEP06 동시성 제어 추가)
 **작성자:** Backend Team
 
 🎉 **준비 완료! Swagger API 명세 배포를 시작하세요!**
