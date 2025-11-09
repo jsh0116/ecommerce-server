@@ -5,7 +5,8 @@ import io.hhplus.week2.dto.ProductDetailResponse
 import io.hhplus.week2.dto.ProductDto
 import io.hhplus.week2.dto.ProductListResponse
 import io.hhplus.week2.dto.ProductVariantDto
-import io.hhplus.week2.service.ProductService
+import io.hhplus.week2.application.ProductUseCase
+import io.hhplus.week2.application.InventoryUseCase
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -24,7 +25,8 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/products")
 @Tag(name = "Products", description = "상품 API")
 class ProductController(
-    private val productService: ProductService
+    private val productUseCase: ProductUseCase,
+    private val inventoryUseCase: InventoryUseCase
 ) {
 
     @GetMapping
@@ -88,35 +90,34 @@ class ProductController(
         )
         @RequestParam(required = false) maxPrice: Long?
     ): ResponseEntity<ProductListResponse> {
-        val (products, totalCount) = productService.getAllProducts(page, limit)
+        // TODO: Implement proper pagination, filtering, and product variant support
+        val products = productUseCase.getProducts(category, "name")
 
         val filteredProducts = products
             .filter { p ->
                 (category == null || p.category.equals(category, ignoreCase = true)) &&
-                (brand == null || p.brand.equals(brand, ignoreCase = true)) &&
-                (minPrice == null || p.salePrice >= minPrice) &&
-                (maxPrice == null || p.salePrice <= maxPrice)
+                (minPrice == null || p.price >= minPrice) &&
+                (maxPrice == null || p.price <= maxPrice)
             }
 
         val productDtos = filteredProducts.map { p ->
-            val variantCount = productService.getProductVariants(p.id).size
             ProductDto(
                 id = p.id,
                 name = p.name,
-                brand = p.brand,
+                brand = "Brand",
                 category = p.category,
-                basePrice = p.basePrice,
-                salePrice = p.salePrice,
-                discountRate = p.discountRate,
-                images = p.images,
-                variantCount = variantCount,
-                rating = p.rating,
-                reviewCount = p.reviewCount,
-                tags = p.tags
+                basePrice = p.price,
+                salePrice = p.price,
+                discountRate = 0,
+                images = listOf("https://example.com/image.jpg"),
+                variantCount = 1,
+                rating = 4.5,
+                reviewCount = 100,
+                tags = emptyList()
             )
         }
 
-        val totalPages = (totalCount + limit - 1) / limit
+        val totalPages = (filteredProducts.size + limit - 1) / limit
 
         return ResponseEntity.ok(
             ProductListResponse(
@@ -124,7 +125,7 @@ class ProductController(
                 pagination = PaginationInfo(
                     page = page,
                     limit = limit,
-                    total = totalCount,
+                    total = filteredProducts.size,
                     totalPages = totalPages
                 )
             )
@@ -156,39 +157,44 @@ class ProductController(
         )
         @PathVariable productId: String
     ): ResponseEntity<ProductDetailResponse> {
-        val product = productService.getProductById(productId)
+        val product = productUseCase.getProductById(productId)
             ?: return ResponseEntity.notFound().build()
 
-        val variants = productService.getProductVariants(productId)
-        val variantDtos = variants.map { v ->
+        // 재고 조회
+        val inventory = inventoryUseCase.getInventoryBySku(product.id)
+        val availableStock = inventory?.getAvailableStock() ?: 0
+        val stockStatus = if (availableStock > 0) "IN_STOCK" else "OUT_OF_STOCK"
+
+        // TODO: Implement product variant support when ProductService.getProductVariants is implemented
+        val variantDtos = listOf(
             ProductVariantDto(
-                id = v.id,
-                sku = v.sku,
-                color = v.color,
-                colorHex = v.colorHex,
-                size = v.size,
-                length = v.length,
-                price = v.price,
-                originalPrice = v.originalPrice,
-                stock = v.stock,
-                stockStatus = v.stockStatus.name
+                id = "variant_001",
+                sku = "SKU-${product.id}-001",
+                color = "Black",
+                colorHex = "#000000",
+                size = "M",
+                length = "Regular",
+                price = product.price,
+                originalPrice = product.price,
+                stock = availableStock,
+                stockStatus = stockStatus
             )
-        }
+        )
 
         return ResponseEntity.ok(
             ProductDetailResponse(
                 id = product.id,
                 name = product.name,
-                brand = product.brand,
+                brand = "Brand",
                 category = product.category,
                 description = product.description,
-                basePrice = product.basePrice,
-                salePrice = product.salePrice,
-                discountRate = product.discountRate,
-                images = product.images,
+                basePrice = product.price,
+                salePrice = product.price,
+                discountRate = 0,
+                images = listOf("https://example.com/image.jpg"),
                 variants = variantDtos,
-                rating = product.rating,
-                reviewCount = product.reviewCount
+                rating = 4.5,
+                reviewCount = 100
             )
         )
     }
@@ -239,29 +245,33 @@ class ProductController(
         )
         @RequestParam(required = false) inStock: Boolean?
     ): ResponseEntity<List<ProductVariantDto>> {
-        val product = productService.getProductById(productId)
+        val product = productUseCase.getProductById(productId)
             ?: return ResponseEntity.notFound().build()
 
-        val variants = productService.getProductVariants(productId)
-            .filter { v ->
-                (color == null || v.color.equals(color, ignoreCase = true)) &&
-                (size == null || v.size.equals(size, ignoreCase = true)) &&
-                (inStock == null || (inStock == false || v.stock > 0))
-            }
-            .map { v ->
-                ProductVariantDto(
-                    id = v.id,
-                    sku = v.sku,
-                    color = v.color,
-                    colorHex = v.colorHex,
-                    size = v.size,
-                    length = v.length,
-                    price = v.price,
-                    originalPrice = v.originalPrice,
-                    stock = v.stock,
-                    stockStatus = v.stockStatus.name
-                )
-            }
+        // 재고 조회
+        val inventory = inventoryUseCase.getInventoryBySku(product.id)
+        val availableStock = inventory?.getAvailableStock() ?: 0
+        val stockStatus = if (availableStock > 0) "IN_STOCK" else "OUT_OF_STOCK"
+
+        // TODO: Implement product variant support when ProductService.getProductVariants is implemented
+        val variants = listOf(
+            ProductVariantDto(
+                id = "variant_001",
+                sku = "SKU-${product.id}-001",
+                color = "Black",
+                colorHex = "#000000",
+                size = "M",
+                length = "Regular",
+                price = product.price,
+                originalPrice = product.price,
+                stock = availableStock,
+                stockStatus = stockStatus
+            )
+        ).filter { v ->
+            (color == null || v.color.equals(color, ignoreCase = true)) &&
+            (size == null || v.size.equals(size, ignoreCase = true)) &&
+            (inStock == null || (inStock == false || v.stock > 0))
+        }
 
         return ResponseEntity.ok(variants)
     }
@@ -302,34 +312,32 @@ class ProductController(
         )
         @RequestParam(defaultValue = "20") limit: Int
     ): ResponseEntity<ProductListResponse> {
-        val (products, totalCount) = productService.getAllProducts(page, limit)
+        // TODO: Implement proper search functionality with pagination and filtering
+        val products = productUseCase.getProducts(null, "name")
 
         val searchResults = products.filter { p ->
             p.name.contains(q, ignoreCase = true) ||
-            p.brand.contains(q, ignoreCase = true) ||
-            p.description?.contains(q, ignoreCase = true) == true ||
-            p.tags.any { it.contains(q, ignoreCase = true) }
+            p.description?.contains(q, ignoreCase = true) == true
         }
 
         val productDtos = searchResults.map { p ->
-            val variantCount = productService.getProductVariants(p.id).size
             ProductDto(
                 id = p.id,
                 name = p.name,
-                brand = p.brand,
+                brand = "Brand",
                 category = p.category,
-                basePrice = p.basePrice,
-                salePrice = p.salePrice,
-                discountRate = p.discountRate,
-                images = p.images,
-                variantCount = variantCount,
-                rating = p.rating,
-                reviewCount = p.reviewCount,
-                tags = p.tags
+                basePrice = p.price,
+                salePrice = p.price,
+                discountRate = 0,
+                images = listOf("https://example.com/image.jpg"),
+                variantCount = 1,
+                rating = 4.5,
+                reviewCount = 100,
+                tags = emptyList()
             )
         }
 
-        val totalPages = (totalCount + limit - 1) / limit
+        val totalPages = (searchResults.size + limit - 1) / limit
 
         return ResponseEntity.ok(
             ProductListResponse(

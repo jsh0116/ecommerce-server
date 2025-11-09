@@ -1,30 +1,39 @@
 package io.hhplus.week2.repository
 
 import io.hhplus.week2.domain.Coupon
+import io.hhplus.week2.domain.UserCoupon
 
 /**
- * 쿠폰 관련 저장소 인터페이스
+ * 쿠폰 저장소 인터페이스
  */
 interface CouponRepository {
     /**
-     * 쿠폰 코드로 쿠폰을 조회합니다.
-     *
-     * @param code 쿠폰 코드
-     * @return 쿠폰 또는 null
+     * 쿠폰 단건 조회
      */
-    fun findByCode(code: String): Coupon?
+    fun findById(id: String): Coupon?
 
     /**
-     * 쿠폰을 저장합니다.
-     *
-     * @param coupon 쿠폰
+     * 특정 사용자의 쿠폰 단건 조회
+     */
+    fun findUserCoupon(userId: String, couponId: String): UserCoupon?
+
+    /**
+     * 특정 사용자의 특정 쿠폰 발급 여부 조회
+     */
+    fun findUserCouponByCouponId(userId: String, couponId: String): UserCoupon?
+
+    /**
+     * 사용자의 모든 쿠폰 조회
+     */
+    fun findUserCoupons(userId: String): List<UserCoupon>
+
+    /**
+     * 쿠폰 저장
      */
     fun save(coupon: Coupon)
 
     /**
-     * 쿠폰을 업데이트합니다.
-     *
-     * @param coupon 업데이트될 쿠폰
+     * 사용자 쿠폰 저장
      */
-    fun update(coupon: Coupon)
+    fun saveUserCoupon(userCoupon: UserCoupon)
 }

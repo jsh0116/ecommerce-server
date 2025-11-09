@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**hhplus-week2** is a Spring Boot 3.2.0 Kotlin microservice starter template. It provides a minimal boilerplate with centralized exception handling and a fully configured testing infrastructure.
+**hhplus-week2** is an e-commerce platform built with Spring Boot 3.2.0 and Kotlin, implementing a clothing retail system with product management, inventory control, order processing, and coupon functionality. The project follows clean architecture principles with domain-driven design.
 
 - **Language:** Kotlin 1.9.21
 - **Framework:** Spring Boot 3.2.0
 - **Build Tool:** Gradle 8.4+ (Kotlin DSL)
 - **Java Target:** Java 17
 - **Package Root:** `io.hhplus.week2`
+- **API Documentation:** Swagger/OpenAPI (Springdoc) at `/swagger-ui.html`
 
 ## Common Development Commands
 
@@ -35,8 +36,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Running the Application
 ```bash
-./gradlew bootRun                  # Run application in development mode
+./gradlew bootRun                  # Run application in development mode (server starts on port 8080)
 java -jar build/libs/hhplus-week2-0.0.1-SNAPSHOT.jar  # Run compiled JAR
+```
+
+### Docker
+```bash
+docker-compose up --build          # Start application with Docker Compose
+docker build -t hhplus-ecommerce:latest .  # Build Docker image
+docker run -p 8080:8080 hhplus-ecommerce:latest  # Run container
+```
+
+### Swagger UI
+```bash
+# After starting the application, access Swagger UI at:
+# http://localhost:8080/swagger-ui.html
+# OpenAPI JSON spec: http://localhost:8080/v3/api-docs
 ```
 
 ### Gradle Information
@@ -50,23 +65,90 @@ java -jar build/libs/hhplus-week2-0.0.1-SNAPSHOT.jar  # Run compiled JAR
 
 ### High-Level Structure
 
+The project follows a clean architecture / layered architecture pattern:
+
 ```
-src/
-├── main/
-│   ├── kotlin/io/hhplus/week2/
-│   │   ├── Week2Application.kt          (Spring Boot entry point)
-│   │   └── ApiControllerAdvice.kt       (Global exception handler)
-│   └── resources/
-│       └── application.yml              (Application configuration)
-└── test/
-    ├── kotlin/io/hhplus/week2/          (Test packages)
-    └── resources/                        (Test resources)
+src/main/kotlin/io/hhplus/week2/
+├── Week2Application.kt              (Spring Boot entry point)
+├── ApiControllerAdvice.kt           (Global exception handler)
+│
+├── controller/                       (Presentation Layer - REST endpoints)
+│   ├── ProductController.kt         (Product APIs)
+│   ├── OrderController.kt           (Order APIs)
+│   ├── CouponController.kt          (Coupon APIs)
+│   └── InventoryController.kt       (Inventory APIs)
+│
+├── application/                      (Application Layer - Use cases/orchestration)
+│   ├── ProductUseCase.kt            (Product business workflows)
+│   ├── OrderUseCase.kt              (Order creation & payment workflows)
+│   └── CouponUseCase.kt             (Coupon issuance & validation)
+│
+├── service/                          (Service Layer - Business logic)
+│   ├── ProductService.kt
+│   ├── OrderService.kt
+│   ├── CouponService.kt
+│   ├── InventoryService.kt
+│   └── impl/                        (Service implementations)
+│
+├── domain/                           (Domain Layer - Business entities & logic)
+│   ├── Product.kt                   (Product entity with business methods)
+│   ├── Order.kt                     (Order entity with state management)
+│   ├── Coupon.kt                    (Coupon entity with validation logic)
+│   └── Inventory.kt                 (Inventory entity with stock management)
+│
+├── repository/                       (Data Access Layer - Persistence interfaces)
+│   ├── ProductRepository.kt
+│   ├── OrderRepository.kt
+│   ├── CouponRepository.kt
+│   ├── InventoryRepository.kt
+│   ├── UserRepository.kt
+│   ├── impl/                        (Repository implementations)
+│   └── mock/                        (Mock implementations for testing)
+│
+├── infrastructure/                   (Infrastructure Layer - External services)
+│   ├── cache/
+│   │   ├── CacheService.kt
+│   │   └── impl/MockCacheService.kt
+│   └── service/
+│       ├── DataTransmissionService.kt
+│       └── impl/MockDataTransmissionService.kt
+│
+├── dto/                              (Data Transfer Objects)
+│   ├── ProductDtos.kt               (Request/Response DTOs for products)
+│   ├── OrderDtos.kt                 (Request/Response DTOs for orders)
+│   ├── CouponDtos.kt                (Request/Response DTOs for coupons)
+│   └── InventoryDtos.kt             (Request/Response DTOs for inventory)
+│
+└── config/
+    └── OpenApiConfig.kt             (Swagger/OpenAPI configuration)
 ```
 
 ### Key Architectural Patterns
 
-#### 1. Global Exception Handling (RestControllerAdvice)
-- **Location:** `src/main/kotlin/io/hhplus/week2/ApiControllerAdvice.kt`
+#### 1. Clean Architecture Layers
+The codebase follows a layered architecture with clear separation of concerns:
+
+- **Controller Layer**: HTTP endpoints that handle requests/responses, delegating to use cases
+- **Application Layer (Use Cases)**: Orchestrates complex business workflows involving multiple services
+- **Service Layer**: Business logic for individual domains
+- **Domain Layer**: Rich domain models with business rules and validation
+- **Repository Layer**: Abstraction for data persistence (interfaces + implementations)
+- **Infrastructure Layer**: External integrations (cache, external APIs, etc.)
+
+**Key Flow Pattern**:
+```
+Controller → UseCase → Service → Domain → Repository
+```
+
+Example: Order creation flows from `OrderController` → `OrderUseCase` → `OrderService` + `ProductService` → `Order` domain entity → `OrderRepository`
+
+#### 2. Domain-Driven Design
+- **Rich Domain Models**: Domain entities (`Order`, `Product`, `Coupon`, `Inventory`) contain business logic, not just data
+- **Business Rules in Domain**: Stock validation, order state transitions, coupon validation live in domain entities
+- **Repository Pattern**: Data access abstracted behind interfaces with mock implementations for testing
+
+#### 3. Global Exception Handling (RestControllerAdvice)
+- **Location:** `ApiControllerAdvice.kt`
 - All unhandled exceptions are caught and return a standardized `ErrorResponse` with:
   - Error code (String)
   - Error message (String)
@@ -74,10 +156,16 @@ src/
 - Extends `ResponseEntityExceptionHandler` for built-in exception support
 - Uses SLF4J logging for error tracking
 
-#### 2. Application Entry Point
-- **Location:** `src/main/kotlin/io/hhplus/week2/Week2Application.kt`
-- Uses `@SpringBootApplication` for component scanning and auto-configuration
-- Standard Spring Boot main function
+#### 4. Use Case Pattern
+- **Location:** `application/` package
+- Use cases orchestrate complex workflows that involve multiple services
+- Example: `OrderUseCase.processPayment()` coordinates order validation, balance checking, stock reduction, coupon usage, and external data transmission
+- Use cases handle cross-cutting concerns like data transmission failures (retry queue pattern)
+
+#### 5. Constructor Injection
+- All Spring components use constructor-based dependency injection (Kotlin primary constructor)
+- Example: `class OrderController(private val orderService: OrderService, ...)`
+- Improves testability and makes dependencies explicit
 
 ### Testing Infrastructure
 
@@ -106,6 +194,7 @@ Tests should be placed in `src/test/kotlin/io/hhplus/week2/` and follow the same
 - Spring Boot 3.2.0 with Spring Cloud 2023.0.0
 - Kotlin standard library and reflection
 - Jackson for JSON processing (via spring-boot-starter-web)
+- Springdoc OpenAPI 2.0.2 for Swagger UI and API documentation
 
 **Optional Libraries Available** (configured in version catalog):
 - Spring Data JPA for database access
@@ -114,6 +203,43 @@ Tests should be placed in `src/test/kotlin/io/hhplus/week2/` and follow the same
 - Redisson for Redis operations
 - Micrometer/Prometheus for metrics and monitoring
 - Spring Actuator for health checks
+
+## Business Domain
+
+This e-commerce platform implements the following business capabilities:
+
+### Product Management
+- Product catalog with categories, pricing, and variants
+- Stock availability checking
+- Top-selling products tracking
+- Product search and filtering
+
+### Order Processing
+- Order creation with multiple items
+- Order state management (PENDING → PAID → PREPARING → SHIPPED → DELIVERED)
+- Order cancellation with business rules (cannot cancel after shipping)
+- Stock reservation during order creation (15-minute TTL)
+
+### Inventory Management
+- Real-time stock tracking
+- Stock reservation system
+- Stock deduction on payment completion
+- Stock restoration on order cancellation
+
+### Coupon System
+- First-come-first-served coupon issuance with quantity limits
+- Coupon validation and discount calculation
+- User coupon management with expiration
+- Coupon usage tracking
+
+### Payment Flow
+1. Order creation validates stock and reserves inventory
+2. Payment validation checks user balance
+3. Payment completion triggers:
+   - Stock deduction
+   - Coupon usage
+   - Order status update to PAID
+   - External data transmission (with retry queue on failure)
 
 ## Development Notes
 
@@ -127,6 +253,72 @@ Tests should be placed in `src/test/kotlin/io/hhplus/week2/` and follow the same
 
 5. **Code Style:** Official Kotlin code style is enforced via `kotlin.code.style=official` in gradle.properties.
 
+6. **Mock Repositories:** The project uses in-memory mock repositories (in `repository/mock/`) for development and testing. Real database implementations should be created in `repository/impl/` when needed.
+
+7. **Data Classes:** Kotlin data classes are heavily used for domain entities, DTOs, and value objects. They provide built-in `equals()`, `hashCode()`, `toString()`, and `copy()` methods.
+
+8. **Swagger Annotations:** Controllers use OpenAPI 3.0 annotations (`@Operation`, `@ApiResponse`, `@Parameter`, `@Tag`) for API documentation.
+
+## Kotlin & Spring Best Practices
+
+### Kotlin Idioms
+- **Leverage Kotlin features**: Use null safety, data classes, extension functions, and Kotlin stdlib functions (`let`, `run`, `apply`, `also`, `with`)
+- **Prefer Kotlin over Java style**: Use Kotlin idioms instead of Java-style code when working with Spring
+- **Null safety**: Take advantage of Kotlin's null safety system and avoid using `!!` operator
+- **Immutability**: Prefer immutable properties (`val`) over mutable ones (`var`)
+- **Data classes**: Use data classes for DTOs, entities, and value objects
+
+### Spring Integration
+- **Constructor injection**: Use Kotlin primary constructor for dependency injection (already used throughout the codebase)
+- **Extension functions**: Consider using Kotlin extension functions to enhance Spring APIs
+- **Nullable parameters**: Use nullable types (`String?`) appropriately for optional request parameters
+
+### Code Examples from This Project
+
+**Good - Constructor injection with primary constructor:**
+```kotlin
+@RestController
+@RequestMapping("/api/v1/orders")
+class OrderController(
+    private val orderService: OrderService,
+    private val productService: ProductService
+)
+```
+
+**Good - Rich domain model with business logic:**
+```kotlin
+data class Order(
+    val id: String,
+    val userId: String,
+    var status: String = "PENDING"
+) {
+    fun canPay(): Boolean = status == "PENDING" && finalAmount > 0
+
+    fun complete() {
+        if (!canPay()) throw IllegalStateException("결제할 수 없는 주문입니다")
+        status = "PAID"
+        paidAt = LocalDateTime.now()
+    }
+}
+```
+
+**Good - Using companion object for factory methods:**
+```kotlin
+data class OrderItem(...) {
+    companion object {
+        fun create(product: Product, quantity: Int): OrderItem {
+            return OrderItem(
+                productId = product.id,
+                productName = product.name,
+                quantity = quantity,
+                unitPrice = product.price,
+                subtotal = product.calculatePrice(quantity)
+            )
+        }
+    }
+}
+```
+
 ## Testing Best Practices for This Project
 
 - Use MockK for mocking dependencies in unit tests
@@ -134,3 +326,6 @@ Tests should be placed in `src/test/kotlin/io/hhplus/week2/` and follow the same
 - Use FixtureMonkey to generate test data instead of manual object creation
 - Leverage AssertJ for readable, fluent assertions
 - Place unit tests alongside the code they test using the same package structure
+- Test domain entity business logic (e.g., `Order.canPay()`, `Product.hasStock()`)
+- Test use case orchestration with mock repositories
+- Write concurrency tests for critical sections (e.g., coupon issuance)

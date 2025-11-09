@@ -1,26 +1,91 @@
 package io.hhplus.week2.domain
 
+import java.time.LocalDateTime
+
+/**
+ * 쿠폰 유형 열거형
+ */
+enum class CouponType {
+    FIXED_AMOUNT,
+    PERCENTAGE,
+    FREE_SHIPPING
+}
+
 /**
  * 쿠폰 도메인 모델
  */
 data class Coupon(
     val id: String,
-    val code: String,
+    val code: String = "",
     val name: String,
-    val type: CouponType,
-    val discount: Long,
-    val minOrderAmount: Long,
-    val maxDiscountAmount: Long?,
-    val validFrom: String,
-    val validUntil: String,
-    val maxPerUser: Int,
-    val isActive: Boolean
-)
+    val type: CouponType = CouponType.FIXED_AMOUNT,
+    val discount: Long = 0L,
+    val discountRate: Int,
+    val minOrderAmount: Long = 0L,
+    val maxDiscountAmount: Long? = null,
+    val totalQuantity: Int,
+    var issuedQuantity: Int,
+    val startDate: LocalDateTime,
+    val endDate: LocalDateTime,
+    val validFrom: String = "",
+    val validUntil: String = "",
+    val isActive: Boolean = true
+) {
+    /**
+     * 발급 가능 여부
+     */
+    fun canIssue(): Boolean {
+        val now = LocalDateTime.now()
+        return issuedQuantity < totalQuantity &&
+                now.isAfter(startDate) && now.isBefore(endDate)
+    }
 
-enum class CouponType {
-    FIXED_AMOUNT,    // 정액
-    PERCENTAGE,      // 정률
-    FREE_SHIPPING    // 배송비 무료
+    /**
+     * 쿠폰 발급
+     */
+    fun issue(): Int {
+        if (!canIssue()) throw IllegalStateException("쿠폰을 발급할 수 없습니다")
+        issuedQuantity++
+        return totalQuantity - issuedQuantity
+    }
+}
+
+/**
+ * 사용자 쿠폰 엔티티
+ */
+data class UserCoupon(
+    val userId: String,
+    val couponId: String,
+    val couponName: String,
+    val discountRate: Int,
+    var status: String = "AVAILABLE",
+    val issuedAt: LocalDateTime = LocalDateTime.now(),
+    var usedAt: LocalDateTime? = null,
+    val expiresAt: LocalDateTime = LocalDateTime.now().plusDays(7)
+) {
+    /**
+     * 쿠폰 유효성 확인
+     */
+    fun isValid(): Boolean {
+        return "AVAILABLE" == status &&
+                (expiresAt == null || LocalDateTime.now().isBefore(expiresAt))
+    }
+
+    /**
+     * 쿠폰 사용
+     */
+    fun use() {
+        if (!isValid()) throw IllegalStateException("사용할 수 없는 쿠폰입니다")
+        status = "USED"
+        usedAt = LocalDateTime.now()
+    }
+
+    /**
+     * 쿠폰 만료
+     */
+    fun expire() {
+        status = "EXPIRED"
+    }
 }
 
 /**
@@ -28,8 +93,8 @@ enum class CouponType {
  */
 data class CouponValidationResult(
     val valid: Boolean,
-    val coupon: Coupon?,
-    val discount: Long = 0,
-    val message: String,
+    val coupon: Coupon? = null,
+    val discount: Long = 0L,
+    val message: String = "",
     val details: Map<String, Any>? = null
 )
