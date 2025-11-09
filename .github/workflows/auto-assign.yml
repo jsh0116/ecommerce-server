@@ -1,0 +1,90 @@
+name: Auto Assign
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+  issues: write
+  contents: read
+
+
+jobs:
+  assign-pr:
+    name: Assign PR to Author
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Assign PR to author
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // PR 작성자를 할당
+            github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              assignees: [context.payload.pull_request.user.login]
+            });
+
+            console.log(`Assigned PR #${context.issue.number} to @${context.payload.pull_request.user.login}`);
+
+      - name: Add labels based on branch
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            let labels = [];
+
+            // 브랜치 이름에 따라 라벨 자동 할당
+            if (branch.startsWith('feature/')) {
+              labels.push('enhancement');
+            } else if (branch.startsWith('bugfix/')) {
+              labels.push('bug');
+            } else if (branch.startsWith('hotfix/')) {
+              labels.push('critical');
+            } else if (branch === 'develop') {
+              labels.push('development');
+            }
+
+            if (labels.length > 0) {
+              github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: labels
+              });
+
+              console.log(`Added labels: ${labels.join(', ')}`);
+            }
+
+      - name: Add welcome comment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const author = context.payload.pull_request.user.login;
+
+            const comment = `👋 Welcome @${author}!
+
+              Thank you for your contribution!
+              
+              🔍 **Checklist before merge:**
+              - [ ] Tests pass locally
+              - [ ] No breaking changes
+              - [ ] Code follows project style
+              - [ ] PR description is clear
+              
+              💡 **Tips:**
+              - Check the CI/CD results below
+              - AI Code Review will analyze your changes
+              - Respond to review comments as needed
+              
+              Looking forward to reviewing your PR! 🚀`;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
