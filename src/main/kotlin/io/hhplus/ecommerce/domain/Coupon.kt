@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.domain
 
+import io.hhplus.ecommerce.exception.CouponException
 import java.time.LocalDateTime
 
 /**
@@ -44,7 +45,7 @@ data class Coupon(
      * 쿠폰 발급
      */
     fun issue(): Int {
-        if (!canIssue()) throw IllegalStateException("쿠폰을 발급할 수 없습니다")
+        if (!canIssue()) throw CouponException.CannotIssueCoupon()
         issuedQuantity++
         return totalQuantity - issuedQuantity
     }
@@ -75,7 +76,7 @@ data class UserCoupon(
      * 쿠폰 사용
      */
     fun use() {
-        if (!isValid()) throw IllegalStateException("사용할 수 없는 쿠폰입니다")
+        if (!isValid()) throw CouponException.CannotUseCoupon()
         status = "USED"
         usedAt = LocalDateTime.now()
     }

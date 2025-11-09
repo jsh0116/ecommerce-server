@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.domain
 
+import io.hhplus.ecommerce.exception.CouponException
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -57,7 +58,7 @@ class CouponTest {
         )
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<CouponException.CannotIssueCoupon> {
             coupon.issue()
         }
         assert(exception.message?.contains("쿠폰을 발급할 수 없습니다") ?: false)
@@ -84,7 +85,7 @@ class CouponTest {
         )
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<CouponException.CannotIssueCoupon> {
             coupon.issue()
         }
         assert(exception.message?.contains("쿠폰을 발급할 수 없습니다") ?: false)
@@ -213,7 +214,7 @@ class CouponTest {
         )
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<CouponException.CannotUseCoupon> {
             userCoupon.use()
         }
         assert(exception.message?.contains("사용할 수 없는 쿠폰") ?: false)

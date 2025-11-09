@@ -5,10 +5,10 @@ import io.hhplus.ecommerce.application.usecases.OrderUseCase
 import io.hhplus.ecommerce.application.usecases.ProductUseCase
 import io.hhplus.ecommerce.application.usecases.InventoryUseCase
 import io.hhplus.ecommerce.domain.*
-import io.hhplus.ecommerce.dto.CreateOrderRequest
-import io.hhplus.ecommerce.dto.OrderItemRequest
-import io.hhplus.ecommerce.dto.ShippingAddressRequest
-import io.hhplus.ecommerce.dto.CancelOrderRequest
+import io.hhplus.ecommerce.presentation.dto.CreateOrderRequest
+import io.hhplus.ecommerce.presentation.dto.OrderItemRequest
+import io.hhplus.ecommerce.presentation.dto.ShippingAddressRequest
+import io.hhplus.ecommerce.presentation.dto.CancelOrderRequest
 import com.ninjasquad.springmockk.MockkBean
 import io.hhplus.ecommerce.presentation.controllers.OrderController
 import io.mockk.every

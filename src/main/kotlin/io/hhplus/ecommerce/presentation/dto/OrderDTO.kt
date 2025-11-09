@@ -1,4 +1,4 @@
-package io.hhplus.ecommerce.dto
+package io.hhplus.ecommerce.presentation.dto
 
 import io.swagger.v3.oas.annotations.media.Schema
 

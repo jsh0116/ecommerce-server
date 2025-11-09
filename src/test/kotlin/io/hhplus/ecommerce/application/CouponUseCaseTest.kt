@@ -4,6 +4,8 @@ import io.hhplus.ecommerce.application.usecases.CouponUseCase
 import io.hhplus.ecommerce.domain.Coupon
 import io.hhplus.ecommerce.domain.CouponType
 import io.hhplus.ecommerce.domain.UserCoupon
+import io.hhplus.ecommerce.exception.CouponException
+import io.hhplus.ecommerce.exception.UserException
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import io.mockk.*
@@ -82,7 +84,7 @@ class CouponUseCaseTest {
         every { couponRepository.findUserCouponByCouponId(userId, couponId) } returns existingUserCoupon
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<CouponException.AlreadyIssuedCoupon> {
             couponUseCase.issueCoupon(couponId, userId)
         }
         assert(exception.message?.contains("이미 발급받은 쿠폰입니다") ?: false)
@@ -113,7 +115,7 @@ class CouponUseCaseTest {
         every { couponRepository.findById(couponId) } returns coupon
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<CouponException.CouponExhausted> {
             couponUseCase.issueCoupon(couponId, userId)
         }
         assert(exception.message?.contains("쿠폰이 모두 소진되었습니다") ?: false)
@@ -129,7 +131,7 @@ class CouponUseCaseTest {
         every { userRepository.findById(userId) } returns null
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<UserException.UserNotFound> {
             couponUseCase.issueCoupon(couponId, userId)
         }
         assert(exception.message?.contains("사용자를 찾을 수 없습니다") ?: false)
@@ -147,7 +149,7 @@ class CouponUseCaseTest {
         every { couponRepository.findById(couponId) } returns null
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<CouponException.CouponNotFound> {
             couponUseCase.issueCoupon(couponId, userId)
         }
         assert(exception.message?.contains("쿠폰을 찾을 수 없습니다") ?: false)
@@ -178,7 +180,7 @@ class CouponUseCaseTest {
         every { couponRepository.findById(couponId) } returns coupon
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<CouponException.CouponExhausted> {
             couponUseCase.issueCoupon(couponId, userId)
         }
         assert(exception.message?.contains("쿠폰이 모두 소진되었습니다") ?: false)

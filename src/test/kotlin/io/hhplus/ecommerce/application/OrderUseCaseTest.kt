@@ -3,6 +3,9 @@ package io.hhplus.ecommerce.application
 import io.hhplus.ecommerce.application.usecases.OrderUseCase
 import io.hhplus.ecommerce.application.usecases.ProductUseCase
 import io.hhplus.ecommerce.domain.*
+import io.hhplus.ecommerce.exception.InventoryException
+import io.hhplus.ecommerce.exception.OrderException
+import io.hhplus.ecommerce.exception.UserException
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import io.hhplus.ecommerce.infrastructure.repositories.OrderRepository
@@ -117,7 +120,7 @@ class OrderUseCaseTest {
         )
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<InventoryException.InsufficientStock> {
             orderUseCase.createOrder(userId, items, null)
         }
         assert(exception.message?.contains("재고 부족") ?: false)
@@ -255,7 +258,7 @@ class OrderUseCaseTest {
         every { orderRepository.findById(orderId) } returns null
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<OrderException.OrderNotFound> {
             orderUseCase.processPayment(orderId, userId)
         }
         assert(exception.message?.contains("주문을 찾을 수 없습니다") ?: false)
@@ -280,10 +283,10 @@ class OrderUseCaseTest {
         every { orderRepository.findById(orderId) } returns order
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<OrderException.UnauthorizedOrderAccess> {
             orderUseCase.processPayment(orderId, differentUserId)
         }
-        assert(exception.message?.contains("주문을 찾을 수 없습니다") ?: false)
+        assert(exception.message?.contains("접근 권한이 없는 주문입니다") ?: false)
     }
 
     @Test
@@ -305,7 +308,7 @@ class OrderUseCaseTest {
         every { orderRepository.findById(orderId) } returns order
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<OrderException.CannotPayOrder> {
             orderUseCase.processPayment(orderId, userId)
         }
         assert(exception.message?.contains("결제할 수 없는 주문입니다") ?: false)
@@ -330,7 +333,7 @@ class OrderUseCaseTest {
         every { userRepository.findById(userId) } returns null
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<UserException.UserNotFound> {
             orderUseCase.processPayment(orderId, userId)
         }
         assert(exception.message?.contains("사용자를 찾을 수 없습니다") ?: false)
@@ -356,10 +359,10 @@ class OrderUseCaseTest {
         every { userRepository.findById(userId) } returns user
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<UserException.InsufficientBalance> {
             orderUseCase.processPayment(orderId, userId)
         }
-        assert(exception.message?.contains("잔액 부족") ?: false)
+        assert(exception.message?.contains("잔액이 부족합니다") ?: false)
     }
 
     @Test
@@ -393,7 +396,7 @@ class OrderUseCaseTest {
         every { inventoryRepository.findBySku(productId) } returns null
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<InventoryException.InventoryNotFound> {
             orderUseCase.processPayment(orderId, userId)
         }
         assert(exception.message?.contains("재고 정보를 찾을 수 없습니다") ?: false)
@@ -566,7 +569,7 @@ class OrderUseCaseTest {
         every { orderRepository.findById(orderId) } returns order
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<OrderException.CannotCancelOrder> {
             orderUseCase.updateOrderStatus(orderId, "CANCELLED")
         }
         assert(exception.message?.contains("취소할 수 없는 주문 상태입니다") ?: false)

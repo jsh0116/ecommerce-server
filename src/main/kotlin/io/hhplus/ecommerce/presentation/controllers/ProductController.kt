@@ -1,10 +1,10 @@
 package io.hhplus.ecommerce.presentation.controllers
 
-import io.hhplus.ecommerce.dto.PaginationInfo
-import io.hhplus.ecommerce.dto.ProductDetailResponse
-import io.hhplus.ecommerce.dto.ProductDto
-import io.hhplus.ecommerce.dto.ProductListResponse
-import io.hhplus.ecommerce.dto.ProductVariantDto
+import io.hhplus.ecommerce.presentation.dto.PaginationInfo
+import io.hhplus.ecommerce.presentation.dto.ProductDetailResponse
+import io.hhplus.ecommerce.presentation.dto.ProductDto
+import io.hhplus.ecommerce.presentation.dto.ProductListResponse
+import io.hhplus.ecommerce.presentation.dto.ProductVariantDto
 import io.hhplus.ecommerce.application.usecases.ProductUseCase
 import io.hhplus.ecommerce.application.usecases.InventoryUseCase
 import io.swagger.v3.oas.annotations.Operation

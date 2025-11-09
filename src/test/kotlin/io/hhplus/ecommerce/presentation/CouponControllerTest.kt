@@ -5,7 +5,7 @@ import io.hhplus.ecommerce.application.usecases.CouponUseCase
 import io.hhplus.ecommerce.domain.Coupon
 import io.hhplus.ecommerce.domain.CouponType
 import io.hhplus.ecommerce.domain.CouponValidationResult
-import io.hhplus.ecommerce.dto.ValidateCouponRequest
+import io.hhplus.ecommerce.presentation.dto.ValidateCouponRequest
 import com.ninjasquad.springmockk.MockkBean
 import io.hhplus.ecommerce.presentation.controllers.CouponController
 import io.mockk.every

@@ -2,6 +2,7 @@ package io.hhplus.ecommerce.application
 
 import io.hhplus.ecommerce.application.usecases.CouponUseCase
 import io.hhplus.ecommerce.domain.Coupon
+import io.hhplus.ecommerce.exception.EcommerceException
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import org.assertj.core.api.Assertions.assertThat
@@ -83,7 +84,7 @@ class CouponUseCaseConcurrencyTest {
                     val userId = "user${index + 1}"
                     couponUseCase.issueCoupon(couponId, userId)
                     successCount.incrementAndGet()
-                } catch (e: IllegalStateException) {
+                } catch (e: EcommerceException) {
                     // 쿠폰 소진 또는 이미 발급받은 경우
                     failureCount.incrementAndGet()
                 } finally {
@@ -127,7 +128,7 @@ class CouponUseCaseConcurrencyTest {
                     val userId = "concurrent_user_${index + 1}"
                     couponUseCase.issueCoupon(couponId, userId)
                     successCount.incrementAndGet()
-                } catch (e: IllegalStateException) {
+                } catch (e: EcommerceException) {
                     failureCount.incrementAndGet()
                 } finally {
                     latch.countDown()
@@ -166,7 +167,7 @@ class CouponUseCaseConcurrencyTest {
                 try {
                     couponUseCase.issueCoupon(couponId, userId)
                     successCount.incrementAndGet()
-                } catch (e: IllegalStateException) {
+                } catch (e: EcommerceException) {
                     failureCount.incrementAndGet()
                 } finally {
                     latch.countDown()

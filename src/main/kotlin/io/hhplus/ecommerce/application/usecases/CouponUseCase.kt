@@ -2,6 +2,7 @@ package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.domain.CouponValidationResult
 import io.hhplus.ecommerce.domain.UserCoupon
+import io.hhplus.ecommerce.exception.*
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import org.springframework.stereotype.Service
@@ -34,18 +35,18 @@ class CouponUseCase(
         synchronized(lockObject) {
             // 사용자 확인
             val user = userRepository.findById(userId)
-                ?: throw IllegalStateException("사용자를 찾을 수 없습니다")
+                ?: throw UserException.UserNotFound(userId)
 
             // 기존 발급 여부 확인
             val existing = couponRepository.findUserCouponByCouponId(userId, couponId)
-            if (existing != null) throw IllegalStateException("이미 발급받은 쿠폰입니다")
+            if (existing != null) throw CouponException.AlreadyIssuedCoupon()
 
             // 쿠폰 정보 조회
             val coupon = couponRepository.findById(couponId)
-                ?: throw IllegalStateException("쿠폰을 찾을 수 없습니다")
+                ?: throw CouponException.CouponNotFound(couponId)
 
             // 수량 체크 및 발급을 원자적으로 처리 (Race Condition 방지)
-            if (!coupon.canIssue()) throw IllegalStateException("쿠폰이 모두 소진되었습니다")
+            if (!coupon.canIssue()) throw CouponException.CouponExhausted()
 
             // 쿠폰 발급 (수량 차감)
             val remainingQuantity = coupon.issue()

@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.hhplus.ecommerce.application.usecases.InventoryUseCase
 import io.hhplus.ecommerce.application.usecases.ReservationInfo
 import io.hhplus.ecommerce.domain.Inventory
-import io.hhplus.ecommerce.dto.ReserveInventoryRequest
-import io.hhplus.ecommerce.dto.DeductInventoryRequest
+import io.hhplus.ecommerce.presentation.dto.ReserveInventoryRequest
+import io.hhplus.ecommerce.presentation.dto.DeductInventoryRequest
 import com.ninjasquad.springmockk.MockkBean
 import io.hhplus.ecommerce.presentation.controllers.InventoryController
 import io.mockk.every

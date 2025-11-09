@@ -1,10 +1,10 @@
 package io.hhplus.ecommerce.presentation.controllers
 
-import io.hhplus.ecommerce.dto.DeductInventoryRequest
-import io.hhplus.ecommerce.dto.DeductInventoryResponse
-import io.hhplus.ecommerce.dto.InventoryResponse
-import io.hhplus.ecommerce.dto.ReserveInventoryRequest
-import io.hhplus.ecommerce.dto.ReserveInventoryResponse
+import io.hhplus.ecommerce.presentation.dto.DeductInventoryRequest
+import io.hhplus.ecommerce.presentation.dto.DeductInventoryResponse
+import io.hhplus.ecommerce.presentation.dto.InventoryResponse
+import io.hhplus.ecommerce.presentation.dto.ReserveInventoryRequest
+import io.hhplus.ecommerce.presentation.dto.ReserveInventoryResponse
 import io.hhplus.ecommerce.application.usecases.InventoryUseCase
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter

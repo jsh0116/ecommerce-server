@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.domain
 
+import io.hhplus.ecommerce.exception.OrderException
 import java.time.LocalDateTime
 
 /**
@@ -33,7 +34,7 @@ data class Order(
      * 결제 완료
      */
     fun complete() {
-        if (!canPay()) throw IllegalStateException("결제할 수 없는 주문입니다")
+        if (!canPay()) throw OrderException.CannotPayOrder()
         status = "PAID"
         paidAt = LocalDateTime.now()
     }
@@ -50,10 +51,7 @@ data class Order(
      */
     fun cancel() {
         if (!canCancel()) {
-            if (status == "PAID") {
-                throw IllegalStateException("결제 완료된 주문은 취소할 수 없습니다")
-            }
-            throw IllegalStateException("이미 배송이 시작되어 취소할 수 없습니다")
+            throw OrderException.CannotCancelOrder(status)
         }
         status = "CANCELLED"
     }

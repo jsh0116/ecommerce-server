@@ -1,8 +1,8 @@
 package io.hhplus.ecommerce.presentation.controllers
 
-import io.hhplus.ecommerce.dto.CouponInfo
-import io.hhplus.ecommerce.dto.ValidateCouponRequest
-import io.hhplus.ecommerce.dto.ValidateCouponResponse
+import io.hhplus.ecommerce.presentation.dto.CouponInfo
+import io.hhplus.ecommerce.presentation.dto.ValidateCouponRequest
+import io.hhplus.ecommerce.presentation.dto.ValidateCouponResponse
 import io.hhplus.ecommerce.application.usecases.CouponUseCase
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter

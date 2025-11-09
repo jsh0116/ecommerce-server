@@ -9,6 +9,7 @@ import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import io.hhplus.ecommerce.application.services.DataTransmissionService
+import io.hhplus.ecommerce.exception.*
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.util.UUID
@@ -36,21 +37,23 @@ class OrderUseCase(
     ): Order {
         // 사용자 확인
         val user = userRepository.findById(userId)
-            ?: throw IllegalStateException("사용자를 찾을 수 없습니다")
+            ?: throw UserException.UserNotFound(userId)
 
         // 상품 및 재고 확인
         val orderItems = mutableListOf<OrderItem>()
         for (req in items) {
             val product = productRepository.findById(req.productId)
-                ?: throw IllegalStateException("상품을 찾을 수 없습니다: ${req.productId}")
+                ?: throw ProductException.ProductNotFound(req.productId)
 
             // 재고 확인 (Product ID를 SKU로 사용)
             val inventory = inventoryRepository.findBySku(product.id)
-                ?: throw IllegalStateException("재고 정보를 찾을 수 없습니다: ${product.id}")
+                ?: throw InventoryException.InventoryNotFound(product.id)
 
             if (!inventory.canReserve(req.quantity)) {
-                throw IllegalStateException(
-                    "재고 부족: ${product.name} (가용 재고 ${inventory.getAvailableStock()}개)"
+                throw InventoryException.InsufficientStock(
+                    productName = product.name,
+                    available = inventory.getAvailableStock(),
+                    required = req.quantity
                 )
             }
 
@@ -62,7 +65,7 @@ class OrderUseCase(
         if (couponId != null) {
             userCoupon = couponRepository.findUserCoupon(userId, couponId)
             if (userCoupon == null || !userCoupon.isValid()) {
-                throw IllegalStateException("유효하지 않은 쿠폰입니다")
+                throw CouponException.InvalidCoupon()
             }
         }
 
@@ -114,7 +117,7 @@ class OrderUseCase(
                 if (order.canCancel()) {
                     order.cancel()
                 } else {
-                    throw IllegalStateException("취소할 수 없는 주문 상태입니다")
+                    throw OrderException.CannotCancelOrder(order.status)
                 }
             }
             else -> {
@@ -131,14 +134,14 @@ class OrderUseCase(
      */
     fun cancelOrder(orderId: String, userId: String): Order {
         val order = orderRepository.findById(orderId)
-            ?: throw IllegalStateException("주문을 찾을 수 없습니다")
+            ?: throw OrderException.OrderNotFound(orderId)
 
         if (order.userId != userId) {
-            throw IllegalStateException("주문을 찾을 수 없습니다")
+            throw OrderException.UnauthorizedOrderAccess()
         }
 
         if (!order.canCancel()) {
-            throw IllegalStateException("취소할 수 없는 주문입니다")
+            throw OrderException.CannotCancelOrder(order.status)
         }
 
         // 주문 취소
@@ -162,23 +165,24 @@ class OrderUseCase(
     fun processPayment(orderId: String, userId: String): PaymentResult {
         // 주문 확인
         val order = orderRepository.findById(orderId)
-            ?: throw IllegalStateException("주문을 찾을 수 없습니다")
+            ?: throw OrderException.OrderNotFound(orderId)
 
         if (order.userId != userId) {
-            throw IllegalStateException("주문을 찾을 수 없습니다")
+            throw OrderException.UnauthorizedOrderAccess()
         }
 
         if (!order.canPay()) {
-            throw IllegalStateException("결제할 수 없는 주문입니다")
+            throw OrderException.CannotPayOrder()
         }
 
         // 잔액 확인 및 차감
         val user = userRepository.findById(userId)
-            ?: throw IllegalStateException("사용자를 찾을 수 없습니다")
+            ?: throw UserException.UserNotFound(userId)
 
         if (user.balance < order.finalAmount) {
-            throw IllegalStateException(
-                "잔액 부족: 필요 ${order.finalAmount}원, 현재 ${user.balance}원"
+            throw UserException.InsufficientBalance(
+                required = order.finalAmount,
+                current = user.balance
             )
         }
 
@@ -188,7 +192,7 @@ class OrderUseCase(
         // 재고 차감 및 판매량 증가 (Product ID를 SKU로 사용)
         for (item in order.items) {
             val inventory = inventoryRepository.findBySku(item.productId)
-                ?: throw IllegalStateException("재고 정보를 찾을 수 없습니다: ${item.productId}")
+                ?: throw InventoryException.InventoryNotFound(item.productId)
 
             // 실제 재고 차감
             inventory.confirmReservation(item.quantity)

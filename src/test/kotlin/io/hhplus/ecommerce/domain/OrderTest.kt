@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.domain
 
+import io.hhplus.ecommerce.exception.OrderException
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -139,7 +140,7 @@ class OrderTest {
         )
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<OrderException.CannotPayOrder> {
             order.complete()
         }
         assert(exception.message?.contains("결제할 수 없는 주문") ?: false)
@@ -196,10 +197,10 @@ class OrderTest {
         )
 
         // When & Then
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<OrderException.CannotCancelOrder> {
             order.cancel()
         }
-        assert(exception.message?.contains("결제 완료된 주문은 취소할 수 없습니다") ?: false)
+        assert(exception.message?.contains("취소할 수 없는 주문 상태입니다") ?: false)
     }
 
     @Test
