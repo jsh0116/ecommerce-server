@@ -39,7 +39,7 @@ jobs:
       # 대안: OpenAI API를 사용한 커스텀 리뷰
       - name: Custom AI Review (OpenAI)
         if: ${{ secrets.OPENAI_API_KEY != '' }}
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         with:
           script: |
             const https = require('https');

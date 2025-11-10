@@ -2,7 +2,7 @@ name: Auto Assign
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, ready_for_review]
 
 permissions:
   pull-requests: write
@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Assign PR to author
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         with:
           script: |
             // PR 작성자를 할당
@@ -31,7 +31,7 @@ jobs:
             console.log(`Assigned PR #${context.issue.number} to @${context.payload.pull_request.user.login}`);
 
       - name: Add labels based on branch
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         with:
           script: |
             const branch = context.payload.pull_request.head.ref;
@@ -60,7 +60,7 @@ jobs:
             }
 
       - name: Add welcome comment
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         with:
           script: |
             const author = context.payload.pull_request.user.login;
