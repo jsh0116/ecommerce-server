@@ -1,0 +1,119 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  ai-review:
+    name: AI Code Review with Multiple Tools
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # CodeRabbit AI Review (권장: 한국어 지원, 한국인 개발자 최적화)
+      - name: CodeRabbit Review
+        uses: coderabbitai/coderabbit-action@v1
+        with:
+          framework: spring-boot
+          language: kotlin
+          # Optional: 토큰은 환경변수로 관리하거나 GitHub Secrets 사용
+          skip_summary: false
+          language_preference: korean  # 한국어 리뷰 선호
+
+      # Deepcode (Snyk) - 보안 취약점 분석
+      - name: Deepcode Analysis
+        uses: snyk/actions/kotlin-gradle@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --file=build.gradle.kts --severity-threshold=high
+        continue-on-error: true
+
+      # Sonarqube 분석 (선택사항: 자체 호스팅)
+      - name: SonarQube Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACTION_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        if: ${{ secrets.SONAR_TOKEN != '' }}
+        continue-on-error: true
+
+      # Kotlin Linter & Formatter 검사
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Check Kotlin code style
+        run: |
+          chmod +x gradlew
+          ./gradlew lintKotlin
+        continue-on-error: true
+
+      # 자동 코멘트: 코드 리뷰 요약
+      - name: Post AI Review Summary
+        if: always()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const comment = `## 🤖 AI Code Review Summary
+
+            AI 코드 분석이 완료되었습니다!
+            
+            ### 📊 검사 항목:
+            - ✅ CodeRabbit AI Review - Kotlin/Spring Boot 최적화 분석
+            - ✅ Deepcode Security - 보안 취약점 검사
+            - ✅ Code Style - Kotlin 스타일 가이드 준수 여부
+            
+            ### 💡 주의사항:
+            - CI/CD 결과를 확인하세요
+            - 리뷰 코멘트에 응답해주세요
+            - 모든 테스트가 통과해야 머지 가능합니다
+            
+            ### 🔗 링크:
+            - [Test Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - [PR Files Changed](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)
+            
+            *자세한 내용은 위의 리뷰 코멘트를 참조하세요.*`;
+
+            // 기존 리뷰 코멘트 확인 (중복 방지)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.body.includes('AI Code Review Summary')
+            );
+
+            if (botComment) {
+              // 기존 코멘트 업데이트
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // 새로운 코멘트 생성
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }

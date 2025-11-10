@@ -1,0 +1,90 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, "feature/**" ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GRADLE_VERSION: 8.4
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 전체 히스토리 가져오기 (코드 분석용)
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: gradle
+
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v3
+
+      - name: Build with Gradle
+        run: |
+          chmod +x gradlew
+          ./gradlew build -x test --info
+        env:
+          GRADLE_OPTS: "-Xmx2048m"
+
+      - name: Run tests
+        run: ./gradlew test
+        env:
+          GRADLE_OPTS: "-Xmx2048m"
+
+      - name: Generate test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: JUnit Test Results
+          path: build/test-results/test/*.xml
+          reporter: java-junit
+          fail-on-error: true
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results
+          path: |
+            build/reports/tests/test/
+            build/test-results/
+
+      - name: Comment on PR with test results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const testResultPath = 'build/test-results/test/TEST-*.xml';
+
+            let summary = '## ✅ Build & Test Report\n\n';
+
+            if (context.job.status === 'success') {
+              summary += '**Status**: All checks passed! 🎉\n\n';
+            } else {
+              summary += '**Status**: Some checks failed ❌\n\n';
+            }
+
+            summary += '- Java: ${{ env.JAVA_VERSION }}\n';
+            summary += '- Gradle: ${{ env.GRADLE_VERSION }}\n';
+            summary += '- Build Status: ${{ job.status }}\n';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });

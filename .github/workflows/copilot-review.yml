@@ -1,0 +1,89 @@
+name: Copilot AI Review (Optional)
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  copilot-review:
+    name: GitHub Copilot Code Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # GitHub Copilot를 통한 코드 리뷰
+      # 참고: GitHub Enterprise 또는 Copilot 구독 필요
+      - name: Copilot Code Review
+        uses: github/copilot-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACTION_TOKEN }}
+        with:
+          review_mode: detailed
+          language: kotlin
+          framework: spring-boot
+          focus_areas: |
+            - Performance optimization
+            - Security vulnerabilities
+            - Best practices
+            - Code clarity
+        continue-on-error: true
+
+      # 대안: OpenAI API를 사용한 커스텀 리뷰
+      - name: Custom AI Review (OpenAI)
+        if: ${{ secrets.OPENAI_API_KEY != '' }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const https = require('https');
+
+            // PR의 변경된 파일 목록 조회
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            const kotlinFiles = files.filter(f =>
+              f.filename.endsWith('.kt')
+            );
+
+            if (kotlinFiles.length === 0) {
+              console.log('No Kotlin files to review');
+              return;
+            }
+
+            // 변경 내역 요약
+            const changes = kotlinFiles.slice(0, 5).map(f =>
+              `- ${f.filename}: ${f.additions} additions, ${f.deletions} deletions`
+            ).join('\n');
+
+            const reviewComment = `## 🤖 Automated Code Review
+
+            **Changed Files:**
+            ${changes}
+            
+            ${kotlinFiles.length > 5 ? `... and ${kotlinFiles.length - 5} more files` : ''}
+            
+            ### Review Focus:
+            - [ ] Code quality and readability
+            - [ ] Performance considerations
+            - [ ] Security best practices
+            - [ ] Test coverage
+            - [ ] Documentation
+            
+            *For detailed AI-powered analysis, please check the CI/CD results above.*`;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: reviewComment
+            });

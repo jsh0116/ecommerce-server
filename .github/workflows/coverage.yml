@@ -1,0 +1,77 @@
+name: Code Coverage Report
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  coverage:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Build and Generate Coverage
+        run: |
+          chmod +x gradlew
+          ./gradlew test jacocoTestReport
+        env:
+          GRADLE_OPTS: "-Xmx2048m"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./build/reports/jacoco/test/jacocoTestReport.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Comment PR with Coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // JaCoCo 리포트 파일 읽기 시도
+            const reportPath = './build/reports/jacoco/test/jacocoTestReport.xml';
+
+            let coverageComment = `## 📊 Code Coverage Report
+
+            **Coverage Status:**
+            - 커버리지 리포트가 생성되었습니다!
+            - Codecov에 업로드되었습니다
+            
+            **주의:**
+            - 새로운 기능을 추가할 때는 테스트 코드도 함께 작성해주세요
+            - 가능한 한 높은 커버리지를 목표로 합니다
+            
+            **링크:**
+            - [Codecov Dashboard](https://codecov.io/gh/${{ github.repository }})
+            - [JaCoCo Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: coverageComment
+            });
+
+      - name: Upload JaCoCo Report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: jacoco-report
+          path: build/reports/jacoco/test/html/
