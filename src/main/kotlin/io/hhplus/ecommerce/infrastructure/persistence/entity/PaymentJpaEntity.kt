@@ -38,21 +38,21 @@ class PaymentJpaEntity(
     val id: Long = 0,
 
     @Column(nullable = false)
-    var orderId: Long,
+    var orderId: Long = 0L,
 
     @Column(nullable = false, unique = true, length = 255)
-    var idempotencyKey: String,
+    var idempotencyKey: String = "",
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    var method: PaymentMethodJpa,
+    var method: PaymentMethodJpa = PaymentMethodJpa.CARD,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var status: PaymentStatusJpa = PaymentStatusJpa.PENDING,
 
     @Column(nullable = false)
-    var amount: Long,
+    var amount: Long = 0L,
 
     @Column(length = 100)
     var transactionId: String? = null,

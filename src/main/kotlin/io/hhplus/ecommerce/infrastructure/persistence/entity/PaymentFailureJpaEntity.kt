@@ -30,13 +30,13 @@ class PaymentFailureJpaEntity(
     val id: String = "",
 
     @Column(nullable = false)
-    var orderId: Long,
+    var orderId: Long = 0L,
 
     @Column(nullable = false)
-    var paymentId: Long,
+    var paymentId: Long = 0L,
 
     @Column(nullable = false, length = 255)
-    var reason: String,
+    var reason: String = "",
 
     @Column(length = 100)
     var pgCode: String? = null,

@@ -31,10 +31,10 @@ class OrderJpaEntity(
     val id: Long = 0,
 
     @Column(nullable = false, length = 50)
-    var orderNumber: String,
+    var orderNumber: String = "",
 
     @Column(nullable = false, length = 36)
-    var userId: String,
+    var userId: String = "",
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

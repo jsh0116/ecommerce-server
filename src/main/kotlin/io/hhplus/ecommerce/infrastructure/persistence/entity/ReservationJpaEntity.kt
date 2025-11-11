@@ -34,20 +34,20 @@ class ReservationJpaEntity(
     val id: String = "",
 
     @Column(nullable = false)
-    var orderId: Long,
+    var orderId: Long = 0L,
 
     @Column(nullable = false, length = 100)
-    var sku: String,
+    var sku: String = "",
 
     @Column(nullable = false)
-    var quantity: Int,
+    var quantity: Int = 0,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var status: ReservationStatusJpa = ReservationStatusJpa.ACTIVE,
 
     @Column(nullable = false)
-    var expiresAt: LocalDateTime,
+    var expiresAt: LocalDateTime = LocalDateTime.now(),
 
     @Column(nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
