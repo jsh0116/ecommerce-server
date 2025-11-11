@@ -3,6 +3,15 @@ package io.hhplus.ecommerce.domain
 import java.time.LocalDateTime
 
 /**
+ * 재고 상태 열거형
+ */
+enum class StockStatus {
+    IN_STOCK,      // 재고 있음 (가용 재고 > 5)
+    LOW_STOCK,     // 재고 부족 임박 (1 <= 가용 재고 <= 5)
+    OUT_OF_STOCK   // 품절 (가용 재고 <= 0)
+}
+
+/**
  * 재고 도메인 모델
  *
  * 재고 계산 공식: availableStock = physicalStock - reservedStock - safetyStock
@@ -93,13 +102,4 @@ data class Inventory(
         }
         physicalStock = newPhysicalStock
     }
-}
-
-/**
- * 재고 상태 열거형
- */
-enum class StockStatus {
-    IN_STOCK,      // 재고 있음 (가용 재고 > 5)
-    LOW_STOCK,     // 재고 부족 임박 (1 <= 가용 재고 <= 5)
-    OUT_OF_STOCK   // 품절 (가용 재고 <= 0)
 }
