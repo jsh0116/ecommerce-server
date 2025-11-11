@@ -23,7 +23,7 @@ class InventoryJpaEntity(
     val id: Long = 0,
 
     @Column(nullable = false, unique = true, length = 100)
-    var sku: String,
+    var sku: String = "",
 
     @Column(nullable = false)
     var physicalStock: Int = 0,
