@@ -1,24 +1,33 @@
 spring:
-  application.name: hhplus-ecommerce-test
+  application.name: hhplus-ecommerce
 
-  # JPA Configuration
+  # JPA Configuration for Testing
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: create-drop  # 테스트마다 DB 재생성
     show-sql: false
+    open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.H2Dialect
-        format_sql: false
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
 
-  # DataSource Configuration (H2 in-memory for unit tests)
+  # DataSource Configuration (TestContainer에서 자동 설정됨)
   datasource:
-    url: jdbc:h2:mem:test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
+    url: jdbc:mysql://localhost:3306/hhplus_ecommerce_test
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
 
-  # SQL Initialization
-  sql:
-    init:
-      mode: always
+# Logging Configuration for Tests
+logging:
+  level:
+    root: INFO
+    io.hhplus.ecommerce: DEBUG

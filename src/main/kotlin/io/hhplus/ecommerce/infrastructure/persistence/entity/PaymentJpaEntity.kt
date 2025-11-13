@@ -1,5 +1,7 @@
 package io.hhplus.ecommerce.infrastructure.persistence.entity
 
+import io.hhplus.ecommerce.infrastructure.util.toUuid
+import io.hhplus.ecommerce.infrastructure.util.uuidToLong
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -35,7 +37,7 @@ enum class PaymentStatusJpa {
 class PaymentJpaEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    val id: Long = 0L,
 
     @Column(nullable = false)
     var orderId: Long = 0L,
@@ -107,4 +109,14 @@ class PaymentJpaEntity(
      * 결제가 성공했는지 확인
      */
     fun isApproved(): Boolean = status == PaymentStatusJpa.APPROVED
+
+    /**
+     * 결제 ID를 UUID 문자열로 변환
+     */
+    fun getUuid(): String = id.toUuid()
+
+    /**
+     * 주문 ID를 UUID 문자열로 변환
+     */
+    fun getOrderUuid(): String = orderId.toUuid()
 }

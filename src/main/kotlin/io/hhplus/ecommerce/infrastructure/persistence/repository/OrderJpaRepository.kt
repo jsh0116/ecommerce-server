@@ -21,13 +21,13 @@ interface OrderJpaRepository : JpaRepository<OrderJpaEntity, Long> {
     /**
      * 사용자별 주문 조회
      */
-    fun findByUserIdOrderByCreatedAtDesc(userId: String): List<OrderJpaEntity>
+    fun findByUserIdOrderByCreatedAtDesc(userId: Long): List<OrderJpaEntity>
 
     /**
      * 사용자별, 상태별 주문 조회
      */
     fun findByUserIdAndStatusOrderByCreatedAtDesc(
-        userId: String,
+        userId: Long,
         status: OrderJpaStatus
     ): List<OrderJpaEntity>
 

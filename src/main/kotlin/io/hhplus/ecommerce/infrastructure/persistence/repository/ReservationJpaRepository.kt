@@ -13,7 +13,7 @@ import org.springframework.stereotype.Repository
  * Saga 패턴: 주문 생성 시 예약, 15분 TTL로 자동 만료
  */
 @Repository
-interface ReservationJpaRepository : JpaRepository<ReservationJpaEntity, String> {
+interface ReservationJpaRepository : JpaRepository<ReservationJpaEntity, Long> {
 
     /**
      * 주문별 예약 조회

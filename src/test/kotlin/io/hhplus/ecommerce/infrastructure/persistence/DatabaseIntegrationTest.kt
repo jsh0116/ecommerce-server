@@ -326,7 +326,7 @@ class DatabaseIntegrationTest {
         val quantityPerReservation = 2
 
         // 3개의 예약 생성
-        val reservationIds = mutableListOf<String>()
+        val reservationIds = mutableListOf<Long>()
         repeat(reservationCount) { index ->
             val orderId = 3100L + index
             val reservation = reservationService.createReservation(

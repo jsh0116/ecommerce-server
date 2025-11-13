@@ -20,7 +20,7 @@ import java.time.LocalDateTime
 class InventoryJpaEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    val id: Long = 0L,
 
     @Column(nullable = false, unique = true, length = 100)
     var sku: String = "",
@@ -69,35 +69,35 @@ class InventoryJpaEntity(
 
     /**
      * 재고 예약
+     *
+     * 주문 생성 시 즉시 physicalStock을 감소시킴
+     * TTL 만료 시 복구됨
      */
     fun reserve(quantity: Int) {
-        require(getAvailableStock() >= quantity) {
-            "재고 부족: 요청 ${quantity}개, 가용 재고 ${getAvailableStock()}개 (SKU: $sku)"
-        }
-        reservedStock += quantity
-        updateStatus()
-    }
-
-    /**
-     * 예약 확정 (실제 재고 차감)
-     */
-    fun confirmReservation(quantity: Int) {
-        require(reservedStock >= quantity) {
-            "예약 수량 부족: 요청 ${quantity}개, 예약 재고 ${reservedStock}개 (SKU: $sku)"
+        require(physicalStock >= quantity) {
+            "재고 부족: 요청 ${quantity}개, 실제 재고 ${physicalStock}개 (SKU: $sku)"
         }
         physicalStock -= quantity
-        reservedStock -= quantity
         updateStatus()
     }
 
     /**
-     * 예약 취소 (예약 재고 복원)
+     * 예약 확정 (이미 reserve()에서 physicalStock이 감소했으므로 상태만 업데이트)
+     */
+    fun confirmReservation(@Suppress("UNUSED_PARAMETER") quantity: Int) {
+        // reserve()에서 이미 physicalStock이 감소했으므로 추가 감소 불필요
+        // 확정 시 reservedStock도 자동으로 0이 됨 (이미 reserve에서 처리됨)
+        updateStatus()
+    }
+
+    /**
+     * 예약 취소 (reserve()에서 감소한 physicalStock 복구)
+     *
+     * 결제 실패 또는 TTL 만료 시 호출
      */
     fun cancelReservation(quantity: Int) {
-        require(reservedStock >= quantity) {
-            "예약 취소 불가: 요청 ${quantity}개, 예약 재고 ${reservedStock}개 (SKU: $sku)"
-        }
-        reservedStock -= quantity
+        // reserve()에서 감소했던 physicalStock을 복구
+        physicalStock += quantity
         updateStatus()
     }
 

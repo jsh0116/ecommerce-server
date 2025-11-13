@@ -12,7 +12,7 @@ import org.springframework.stereotype.Repository
  * 보상 트랜잭션(환불, 재고 복구) 추적
  */
 @Repository
-interface PaymentFailureJpaRepository : JpaRepository<PaymentFailureJpaEntity, String> {
+interface PaymentFailureJpaRepository : JpaRepository<PaymentFailureJpaEntity, Long> {
 
     /**
      * 주문별 결제 실패 조회
