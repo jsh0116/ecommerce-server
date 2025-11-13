@@ -1,5 +1,7 @@
 package io.hhplus.ecommerce.infrastructure.persistence.entity
 
+import io.hhplus.ecommerce.infrastructure.util.toUuid
+import io.hhplus.ecommerce.infrastructure.util.uuidToLong
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -26,8 +28,8 @@ enum class CompensationStatusJpa {
 )
 class PaymentFailureJpaEntity(
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    val id: String = "",
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long = 0L,
 
     @Column(nullable = false)
     var orderId: Long = 0L,
@@ -78,4 +80,19 @@ class PaymentFailureJpaEntity(
      * 보상이 필요한지 확인
      */
     fun needsCompensation(): Boolean = compensationStatus == CompensationStatusJpa.PENDING
+
+    /**
+     * 실패 기록 ID를 UUID 문자열로 변환
+     */
+    fun getUuid(): String = id.toUuid()
+
+    /**
+     * 주문 ID를 UUID 문자열로 변환
+     */
+    fun getOrderUuid(): String = orderId.toUuid()
+
+    /**
+     * 결제 ID를 UUID 문자열로 변환
+     */
+    fun getPaymentUuid(): String = paymentId.toUuid()
 }

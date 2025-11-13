@@ -1,5 +1,7 @@
 package io.hhplus.ecommerce.infrastructure.persistence.entity
 
+import io.hhplus.ecommerce.infrastructure.util.toUuid
+import io.hhplus.ecommerce.infrastructure.util.uuidToLong
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -28,13 +30,13 @@ enum class OrderJpaStatus {
 class OrderJpaEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    val id: Long = 0L,
 
     @Column(nullable = false, length = 50)
     var orderNumber: String = "",
 
-    @Column(nullable = false, length = 36)
-    var userId: String = "",
+    @Column(nullable = false)
+    var userId: Long = 0L,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -87,4 +89,14 @@ class OrderJpaEntity(
         status = OrderJpaStatus.CANCELLED
         updatedAt = LocalDateTime.now()
     }
+
+    /**
+     * 주문 ID를 UUID 문자열로 변환
+     */
+    fun getUuid(): String = id.toUuid()
+
+    /**
+     * 사용자 ID를 UUID 문자열로 변환
+     */
+    fun getUserUuid(): String = userId.toUuid()
 }

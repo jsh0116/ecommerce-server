@@ -9,7 +9,7 @@ interface ProductRepository {
     /**
      * 상품 단건 조회
      */
-    fun findById(id: String): Product?
+    fun findById(id: Long): Product?
 
     /**
      * 상품 목록 조회
