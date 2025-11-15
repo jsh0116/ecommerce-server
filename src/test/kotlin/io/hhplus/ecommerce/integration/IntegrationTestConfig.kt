@@ -1,6 +1,5 @@
 package io.hhplus.ecommerce.integration
 
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
 
 /**
@@ -13,7 +12,9 @@ import org.springframework.test.context.ActiveProfiles
  *
  * 현재: H2 메모리 DB 또는 실제 MySQL 사용
  * (application-test.yml에서 datasource 설정)
+ *
+ * 주의: @SpringBootTest와 @DirtiesContext는 각 구현 클래스에서 추가해야 합니다
+ * (여러 @SpringBootTest가 있을 때 Bean 충돌을 방지하기 위함)
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 abstract class IntegrationTestBase

@@ -16,7 +16,7 @@ spring:
         order_inserts: true
         order_updates: true
 
-  # DataSource Configuration (TestContainer에서 자동 설정됨)
+  # DataSource Configuration (TestContainer 또는 로컬 MySQL)
   datasource:
     url: jdbc:mysql://localhost:3306/hhplus_ecommerce_test
     username: root
