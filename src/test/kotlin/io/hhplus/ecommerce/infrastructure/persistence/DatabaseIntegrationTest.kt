@@ -57,6 +57,11 @@ class DatabaseIntegrationTest {
 
     @BeforeEach
     fun setUp() {
+        // 데이터 정리
+        reservationRepository.deleteAll()
+        inventoryRepository.deleteAll()
+        paymentRepository.deleteAll()
+
         // 테스트용 재고 초기화
         inventoryService.createInventory(
             sku = "SKU-001",
