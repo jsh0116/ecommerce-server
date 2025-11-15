@@ -69,5 +69,14 @@ tasks.getByName("jar") {
 // test tasks
 tasks.test {
     ignoreFailures = true
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("integration")
+    }
+}
+
+tasks.register<Test>("testIntegration") {
+    useJUnitPlatform {
+        includeTags("integration")
+    }
+    shouldRunAfter(tasks.test)
 }
