@@ -44,7 +44,7 @@ jobs:
           cache: gradle
 
       - name: Validate Gradle wrapper
-        uses: gradle/action/wrapper-validation-action@v3
+        uses: gradle/wrapper-validation-action@v3
 
       - name: Build with Gradle
         run: |
@@ -53,8 +53,13 @@ jobs:
         env:
           GRADLE_OPTS: "-Xmx2048m"
 
-      - name: Run tests
+      - name: Run unit tests
         run: ./gradlew test
+        env:
+          GRADLE_OPTS: "-Xmx2048m"
+
+      - name: Run integration tests
+        run: ./gradlew testIntegration
         env:
           GRADLE_OPTS: "-Xmx2048m"
           SPRING_DATASOURCE_URL: "jdbc:mysql://localhost:3306/hhplus_ecommerce_test"
