@@ -7,14 +7,14 @@ import java.time.LocalDateTime
  * 주문 도메인 모델
  */
 data class Order(
-    val id: String,
-    val userId: String,
+    val id: Long,
+    val userId: Long,
     val items: List<OrderItem>,
     val totalAmount: Long,
     val discountAmount: Long,
     val finalAmount: Long,
     var status: String = "PENDING",
-    val couponId: String? = null,
+    val couponId: Long? = null,
     val createdAt: LocalDateTime = LocalDateTime.now(),
     var paidAt: LocalDateTime? = null
 ) {
@@ -61,7 +61,7 @@ data class Order(
  * 주문 항목 엔티티
  */
 data class OrderItem(
-    val productId: String,
+    val productId: Long,
     val productName: String,
     val quantity: Int,
     val unitPrice: Long,

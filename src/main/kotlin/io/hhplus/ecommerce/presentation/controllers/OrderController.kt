@@ -14,6 +14,7 @@ import io.hhplus.ecommerce.application.usecases.OrderUseCase
 import io.hhplus.ecommerce.application.usecases.ProductUseCase
 import io.hhplus.ecommerce.application.usecases.InventoryUseCase
 import io.hhplus.ecommerce.presentation.dto.ShippingAddressRequest
+import io.hhplus.ecommerce.infrastructure.util.toUuid
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -91,11 +92,15 @@ class OrderController(
         var totalAmount = 0L
 
         for (item in request.items) {
-            val product = productUseCase.getProductById(item.variantId)
+            val productId = item.variantId.toLongOrNull()
+                ?: return ResponseEntity.badRequest()
+                    .body(mapOf("code" to "INVALID_PRODUCT_ID", "message" to "유효하지 않은 상품 ID입니다"))
+
+            val product = productUseCase.getProductById(productId)
                 ?: return ResponseEntity.notFound().build()
 
             // 재고 확인 (Inventory 사용)
-            val inventory = inventoryUseCase.getInventoryBySku(product.id)
+            val inventory = inventoryUseCase.getInventoryBySku(product.id.toString())
                 ?: return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(
                         mapOf(
@@ -119,10 +124,10 @@ class OrderController(
 
             orderItems.add(
                 OrderItemResponse(
-                    id = "item_${product.id}",
+                    id = product.id.toString(),
                     productName = product.name,
                     variant = VariantInfo(
-                        id = product.id,
+                        id = product.id.toString(),
                         sku = "SKU-${product.id}",
                         color = "Black",
                         size = "M"
@@ -160,27 +165,33 @@ class OrderController(
         val orderId = "ORD-${System.currentTimeMillis()}"
         val orderNumber = "ORD-${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"))}-${(System.currentTimeMillis() % 10000).toInt()}"
 
-        val userId = authorization?.substringAfter("Bearer ")?.trim() ?: "user1"
+        val userId = authorization?.substringAfter("Bearer ")?.trim()?.toLongOrNull() ?: 1L
 
         // UseCase를 통한 주문 생성
         val orderItemRequests = orderItems.map { itemResponse ->
             OrderUseCase.OrderItemRequest(
-                productId = itemResponse.variant.id,
+                productId = itemResponse.variant.id.toLong(),
                 quantity = itemResponse.quantity
             )
+        }
+
+        val couponIdLong = if (!request.couponCode.isNullOrBlank()) {
+            request.couponCode.toLongOrNull()
+        } else {
+            null
         }
 
         val order = orderUseCase.createOrder(
             userId = userId,
             items = orderItemRequests,
-            couponId = if (!request.couponCode.isNullOrBlank()) request.couponCode else null
+            couponId = couponIdLong
         )
 
         // 응답 생성
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(
                 CreateOrderResponse(
-                    id = order.id,
+                    id = order.id.toString(),
                     orderNumber = orderNumber,
                     status = order.status,
                     reservationExpiry = LocalDateTime.now().plusMinutes(15).format(dateFormatter),
@@ -233,15 +244,18 @@ class OrderController(
         )
         @RequestHeader(required = false) authorization: String?
     ): ResponseEntity<OrderDetailResponse> {
-        val order = orderUseCase.getOrderById(orderId)
+        val orderIdLong = orderId.toLongOrNull()
+            ?: return ResponseEntity.badRequest().build()
+
+        val order = orderUseCase.getOrderById(orderIdLong)
             ?: return ResponseEntity.notFound().build()
 
         val itemResponses = order.items.map { item ->
             OrderItemResponse(
-                id = item.productId,
+                id = item.productId.toString(),
                 productName = item.productName,
                 variant = VariantInfo(
-                    id = item.productId,
+                    id = item.productId.toString(),
                     sku = "SKU-${item.productId}",
                     color = "Black",
                     size = "M"
@@ -254,7 +268,7 @@ class OrderController(
 
         return ResponseEntity.ok(
             OrderDetailResponse(
-                id = order.id,
+                id = order.id.toString(),
                 orderNumber = "ORD-${order.id}",
                 status = order.status,
                 items = itemResponses,
@@ -327,11 +341,14 @@ class OrderController(
         )
         @RequestHeader(required = false) authorization: String?
     ): ResponseEntity<Any> {
-        val userId = authorization?.substringAfter("Bearer ")?.trim() ?: "user1"
+        val userId = authorization?.substringAfter("Bearer ")?.trim()?.toLongOrNull() ?: 1L
+        val orderIdLong = orderId.toLongOrNull()
+            ?: return ResponseEntity.badRequest()
+                .body(mapOf("code" to "INVALID_ORDER_ID", "message" to "유효하지 않은 주문 ID입니다"))
 
         return try {
             // UseCase를 통한 주문 취소 및 재고 복구
-            val cancelledOrder = orderUseCase.cancelOrder(orderId, userId)
+            val cancelledOrder = orderUseCase.cancelOrder(orderIdLong, userId)
 
             // 환불금액 계산
             val refundAmount = cancelledOrder.finalAmount

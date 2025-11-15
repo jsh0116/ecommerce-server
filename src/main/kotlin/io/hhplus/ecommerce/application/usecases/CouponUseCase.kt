@@ -18,7 +18,7 @@ class CouponUseCase(
     private val userRepository: UserRepository
 ) {
     // 쿠폰 ID별 락 관리를 위한 맵
-    private val couponLocks = ConcurrentHashMap<String, Any>()
+    private val couponLocks = ConcurrentHashMap<Long, Any>()
 
     /**
      * 선착순 쿠폰 발급 (동시성 제어 적용)
@@ -27,7 +27,7 @@ class CouponUseCase(
      * - check-then-act 패턴의 원자성을 보장
      * - 쿠폰 ID별로 락을 분리하여 다른 쿠폰 발급에는 영향 없음
      */
-    fun issueCoupon(couponId: String, userId: String): CouponIssueResult {
+    fun issueCoupon(couponId: Long, userId: Long): CouponIssueResult {
         // 쿠폰 ID별 락 객체 획득 (동일한 쿠폰에 대해서만 동기화)
         val lockObject = couponLocks.computeIfAbsent(couponId) { Any() }
 
@@ -35,7 +35,7 @@ class CouponUseCase(
         synchronized(lockObject) {
             // 사용자 확인
             val user = userRepository.findById(userId)
-                ?: throw UserException.UserNotFound(userId)
+                ?: throw UserException.UserNotFound(userId.toString())
 
             // 기존 발급 여부 확인
             val existing = couponRepository.findUserCouponByCouponId(userId, couponId)
@@ -43,7 +43,7 @@ class CouponUseCase(
 
             // 쿠폰 정보 조회
             val coupon = couponRepository.findById(couponId)
-                ?: throw CouponException.CouponNotFound(couponId)
+                ?: throw CouponException.CouponNotFound(couponId.toString())
 
             // 수량 체크 및 발급을 원자적으로 처리 (Race Condition 방지)
             if (!coupon.canIssue()) throw CouponException.CouponExhausted()
@@ -81,7 +81,7 @@ class CouponUseCase(
     /**
      * 보유 쿠폰 조회
      */
-    fun getUserCoupons(userId: String): List<UserCoupon> {
+    fun getUserCoupons(userId: Long): List<UserCoupon> {
         // 사용자 쿠폰 조회
         val coupons = couponRepository.findUserCoupons(userId)
 
@@ -116,7 +116,7 @@ class CouponUseCase(
 
     // 내부 응답 객체
     data class CouponIssueResult(
-        val userCouponId: String,
+        val userCouponId: Long,
         val couponName: String,
         val discountRate: Int,
         val expiresAt: LocalDateTime,
