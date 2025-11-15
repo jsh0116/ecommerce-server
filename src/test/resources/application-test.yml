@@ -18,9 +18,9 @@ spring:
 
   # DataSource Configuration (TestContainer 또는 로컬 MySQL)
   datasource:
-    url: jdbc:mysql://localhost:3306/hhplus_ecommerce_test
-    username: root
-    password: root
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/hhplus_ecommerce_test}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 5

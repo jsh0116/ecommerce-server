@@ -62,9 +62,9 @@ jobs:
         run: ./gradlew testIntegration
         env:
           GRADLE_OPTS: "-Xmx2048m"
-          SPRING_DATASOURCE_URL: "jdbc:mysql://localhost:3306/hhplus_ecommerce_test"
-          SPRING_DATASOURCE_USERNAME: "root"
-          SPRING_DATASOURCE_PASSWORD: "root"
+          SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/hhplus_ecommerce_test
+          SPRING_DATASOURCE_USERNAME: root
+          SPRING_DATASOURCE_PASSWORD: root
 
       - name: Generate test report
         if: always()
