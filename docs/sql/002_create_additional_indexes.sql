@@ -72,14 +72,14 @@ ADD INDEX idx_active_deleted (is_active, deleted_at) COMMENT '활성화+삭제�
 ALTER TABLE reviews
 ADD INDEX idx_product_created (product_id, created_at DESC) COMMENT '상품+생성날짜 복합 인덱스 (상품 리뷰 조회 최적화)';
 
--- 6. User_Coupons 테이블: 사용자+상태+만료시간 복합 인덱스
+-- 6. User_Coupons 테이블: 사용자+상태 복합 인덱스
 -- 문제: 유효한 쿠폰 조회 시 상태와 기간 모두 필터링
 -- 최적화:
 --   - SELECT * FROM user_coupons WHERE user_id = ? AND status = 'AVAILABLE'
---   - 쿠폰 만료 배치: WHERE status = 'AVAILABLE' AND expires_at <= NOW()
-// 쿼리 예: SELECT * FROM user_coupons WHERE user_id = 1 AND status = 'AVAILABLE'
+--   - 쿠폰 만료 배치: WHERE status = 'AVAILABLE' AND updated_at <= NOW()
+-- 쿼리 예: SELECT * FROM user_coupons WHERE user_id = 1 AND status = 'AVAILABLE'
 ALTER TABLE user_coupons
-ADD INDEX idx_user_status_used (user_id, status, used_at DESC) COMMENT '사용자+상태+사용날짜 복합 인덱스 (쿠폰 조회 최적화)';
+ADD INDEX idx_user_status (user_id, status) COMMENT '사용자+상태 복합 인덱스 (쿠폰 조회 최적화)';
 
 -- 7. Order_Items 테이블: 상품+주문별 주문 항목 조회 최적화
 -- 문제: 주문 항목 조회 시 상품 ID와 주문 ID 모두 사용
@@ -87,16 +87,16 @@ ADD INDEX idx_user_status_used (user_id, status, used_at DESC) COMMENT '사용�
 --   - SELECT * FROM order_items WHERE order_id = ?
 --   - 또는 상품별 모든 주문 항목: SELECT * FROM order_items WHERE product_id = ?
 --   - 두 경우 모두 개별 인덱스로 충분하지만, 조회 성능 향상
-// 쿼리 예: SELECT * FROM order_items WHERE order_id = 'uuid' AND review_status IN ('PENDING', 'REVIEWABLE')
+-- 쿼리 예: SELECT * FROM order_items WHERE order_id = 1 AND review_status IN ('PENDING', 'REVIEWABLE')
 ALTER TABLE order_items
 ADD INDEX idx_order_product (order_id, product_id) COMMENT '주문+상품 복합 인덱스 (주문 항목 조회 최적화)';
 
--- 8. Inventory 테이블: SKU+상태 복합 인덱스
--- 문제: 재고 상태별 조회 시 SKU 기준으로 추가 필터링 필요
-// 최적화:
---   - SELECT * FROM inventory WHERE sku = ? AND status IN ('IN_STOCK', 'LOW_STOCK')
---   - 상태별 대시보드: SELECT COUNT(*) FROM inventory WHERE status = 'OUT_OF_STOCK' GROUP BY sku
-// 쿼리 예: SELECT * FROM inventory WHERE status = 'IN_STOCK' ORDER BY available_stock DESC
+-- 8. Inventory 테이블: 상태+가용재고 복합 인덱스
+-- 문제: 재고 상태별 조회 시 추가 필터링 필요
+-- 최적화:
+--   - SELECT * FROM inventory WHERE status IN ('IN_STOCK', 'LOW_STOCK')
+--   - 상태별 대시보드: SELECT COUNT(*) FROM inventory WHERE status = 'OUT_OF_STOCK'
+-- 쿼리 예: SELECT * FROM inventory WHERE status = 'IN_STOCK' ORDER BY available_stock DESC
 ALTER TABLE inventory
 ADD INDEX idx_status_stock (status, available_stock DESC) COMMENT '상태+가용재고 복합 인덱스 (재고 상태별 조회 최적화)';
 
@@ -106,19 +106,19 @@ ADD INDEX idx_status_stock (status, available_stock DESC) COMMENT '상태+가용
 
 -- 9. Coupons 테이블: 유효기간+활성화 복합 인덱스
 -- 문제: 현재 유효한 쿠폰 조회
-// 최적화:
+-- 최적화:
 --   - SELECT * FROM coupons WHERE valid_from <= NOW() AND valid_until >= NOW() AND is_active = 1
 --   - 배치: 만료된 쿠폰 상태 업데이트 시
-// 쿠�리 예: SELECT * FROM coupons WHERE is_active = 1 AND valid_until >= CURRENT_TIMESTAMP
+-- 쿼리 예: SELECT * FROM coupons WHERE is_active = 1 AND valid_until >= CURRENT_TIMESTAMP
 ALTER TABLE coupons
 ADD INDEX idx_active_valid (is_active, valid_until DESC) COMMENT '활성화+유효종료일 복합 인덱스 (유효 쿠폰 조회 최적화)';
 
 -- 10. Webhook_Logs 테이블: 상태+생성시간 복합 인덱스
 -- 문제: 웹훅 처리 현황 조회 및 재시도 대상 찾기
-// 최적화:
+-- 최적화:
 --   - SELECT * FROM webhook_logs WHERE status = 'FAILED' ORDER BY created_at ASC
 --   - 최근 웹훅: SELECT * FROM webhook_logs WHERE status = 'COMPLETED' ORDER BY created_at DESC LIMIT 100
-// 쿼리 예: SELECT * FROM webhook_logs WHERE status = 'PROCESSING' OR status = 'QUEUED' ORDER BY created_at ASC
+-- 쿼리 예: SELECT * FROM webhook_logs WHERE status = 'PROCESSING' OR status = 'QUEUED' ORDER BY created_at ASC
 ALTER TABLE webhook_logs
 ADD INDEX idx_status_created (status, created_at DESC) COMMENT '상태+생성시간 복합 인덱스 (웹훅 로그 조회 최적화)';
 
@@ -128,14 +128,14 @@ ADD INDEX idx_status_created (status, created_at DESC) COMMENT '상태+생성시
 
 -- Point_Histories 테이블: 사용자+생성시간 복합 인덱스 (포인트 이력 조회 최적화)
 -- 문제: 사용자의 최근 포인트 변동 내역 조회
-// 쿼리 예: SELECT * FROM point_histories WHERE user_id = 1 AND type = 'EARNED' ORDER BY created_at DESC
+-- 쿼리 예: SELECT * FROM point_histories WHERE user_id = 1 AND type = 'EARNED' ORDER BY created_at DESC
 ALTER TABLE point_histories
 ADD INDEX idx_user_created (user_id, created_at DESC) COMMENT '사용자+생성시간 복합 인덱스 (포인트 이력 조회 최적화)';
 
 -- Restock_Notifications 테이블: 상태+생성시간 복합 인덱스
-// 쿼리 예: SELECT * FROM restock_notifications WHERE status = 'PENDING' ORDER BY created_at ASC
+-- 쿼리 예: SELECT * FROM restock_notifications WHERE status = 'PENDING' ORDER BY created_at ASC
 ALTER TABLE restock_notifications
-ADD INDEX idx_status_created (status, created_at DESC) COMMENT '상태+생성시간 복합 인덱스 (알림 처리 최적화)';
+ADD INDEX idx_notification_status_created (status, created_at DESC) COMMENT '상태+생성시간 복합 인덱스 (알림 처리 최적화)';
 
 -- ============================================
 -- 인덱스 추가 완료 메시지

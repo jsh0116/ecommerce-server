@@ -44,6 +44,7 @@ class TestExceptionController {
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
 @DisplayName("ApiControllerAdvice 테스트")
+@org.springframework.test.context.ActiveProfiles("test")
 class ApiControllerAdviceTest {
 
     @Autowired

@@ -13,6 +13,7 @@ import org.springframework.test.annotation.DirtiesContext
 @DisplayName("DTO 직렬화 테스트")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
+@org.springframework.test.context.ActiveProfiles("test")
 class DtoSerializationTest {
 
     @Autowired

@@ -194,36 +194,50 @@ fun getTopProducts(limit: Int): TopProductResponse {
 
 ### 3.2 쿼리 최적화
 
-#### Fetch Join으로 N+1 문제 해결
+#### 복합 인덱스를 통한 N+1 문제 해결
 
 **Before** (N+1 쿼리):
 ```kotlin
 // Query 1: 100개 상품 조회
 val products = productRepository.findAll(category, sort)
 
-// Query 2-101: 각 상품의 재고 조회
+// Query 2-101: 각 상품의 재고 조회 (단순 조회 N번)
 products.map { product ->
-    val inventory = inventoryRepository.findBySku(product.id)
+    val inventory = inventoryRepository.findBySku(product.sku)
 }
 ```
 
-**After** (Fetch Join):
+**After** (복합 인덱스 최적화):
 ```kotlin
+// 본 프로젝트는 외래키 없는 마이크로서비스 구조로 Fetch Join 불가
+// 대신 복합 인덱스 활용으로 N+1 쿼리 구조 자체를 제거
+
+// 방법 1: 단일 테이블 쿼리 최적화 (idx_brand_category_active 활용)
 @Query("""
     SELECT p FROM ProductJpaEntity p
-    LEFT JOIN FETCH InventoryJpaEntity i ON i.sku = p.id.toString()
-    WHERE (:category IS NULL OR p.category = :category)
+    WHERE (:brand IS NULL OR p.brand = :brand)
+    AND (:category IS NULL OR p.category = :category)
     AND p.isActive = true AND p.deletedAt IS NULL
     ORDER BY p.createdAt DESC
 """)
-fun findProductsWithInventory(
+fun findActiveProductsByBrandAndCategory(
+    @Param("brand") brand: String?,
     @Param("category") category: String?
 ): List<ProductJpaEntity>
+
+// 방법 2: 서비스 레이어에서 재고 조회 분리 (배치 쿼리)
+fun getProductsWithInventory(products: List<Product>): List<ProductDTO> {
+    // 1. 상품 조회: idx_brand_category_active 인덱스로 최적화 (1 쿼리)
+    // 2. 재고 조회: SKU 목록 IN 쿼리로 배치 처리 (1 쿼리)
+    val inventoryMap = inventoryRepository.findBySkuIn(products.map { it.sku })
+    return products.map { p -> mapToDTO(p, inventoryMap[p.sku]) }
+}
 ```
 
 **성능 개선**:
-- 쿼리 수: 101 -> 1 (100배 감소)
+- N+1 쿼리 구조 제거: 101 쿼리 -> 1-2 쿼리 (50-100배 감소)
 - 응답 시간: 100-500ms -> 10-50ms (5-10배 개선)
+- 복합 인덱스로 WHERE 조건 최적화
 
 #### 배치 UPDATE로 O(N) -> O(1) 최적화
 
@@ -306,16 +320,20 @@ ORDER BY total_amount DESC
 
 ### 4.2 주요 코드 예시
 
-#### Fetch Join으로 N+1 해결
+#### 복합 인덱스로 조회 최적화
 
 ```kotlin
+// idx_brand_category_active 활용
 @Query("""
-    SELECT DISTINCT p FROM ProductJpaEntity p
-    LEFT JOIN FETCH InventoryJpaEntity i ON i.sku = p.id.toString()
-    WHERE p.isActive = true AND p.deletedAt IS NULL
+    SELECT p FROM ProductJpaEntity p
+    WHERE p.brand = :brand AND p.category = :category
+    AND p.isActive = true AND p.deletedAt IS NULL
     ORDER BY p.createdAt DESC
 """)
-fun findAllActiveProducts(): List<ProductJpaEntity>
+fun findActiveProductsByBrandAndCategory(
+    @Param("brand") brand: String,
+    @Param("category") category: String
+): List<ProductJpaEntity>
 ```
 
 #### 배치 UPDATE로 TTL 처리

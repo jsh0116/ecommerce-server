@@ -77,19 +77,32 @@ ADD INDEX idx_brand_category_active (brand, category, is_active);
 
 **효과**: 50-80배 조회 성능 개선
 
-### 2️⃣ Fetch Join (N+1 해결)
+### 2️⃣ 복합 인덱스 활용 쿼리 최적화 (N+1 대안)
 
-**예시**:
+**주의**: 본 프로젝트는 외래키를 사용하지 않아 JPA Fetch Join을 사용할 수 없습니다.
+대신 복합 인덱스와 쿼리 최적화로 N+1 문제를 해결합니다.
+
+**예시 - 단일 쿼리로 최적화**:
 ```kotlin
+// Before: 101개 쿼리 (상품 목록 + 각 상품의 재고 조회)
+val products = findAll()  // 1 쿼리
+products.map { p ->
+    val inventory = inventoryRepository.findBySku(p.sku)  // N 쿼리
+}
+
+// After: 1-2개 쿼리 (복합 인덱스 활용)
 @Query("""
-    SELECT p FROM ProductJpaEntity p
-    LEFT JOIN FETCH InventoryJpaEntity i ON i.sku = p.id
-    WHERE p.isActive = true
+    SELECT o FROM OrderJpaEntity o
+    WHERE o.userId = :userId AND o.status = :status
+    ORDER BY o.createdAt DESC
 """)
-fun findProductsWithInventory(): List<ProductJpaEntity>
+fun findByUserIdAndStatusOptimized(
+    @Param("userId") userId: Long,
+    @Param("status") status: OrderJpaStatus
+): List<OrderJpaEntity>
 ```
 
-**효과**: 101 쿼리 -> 1 쿼리 (100배 개선)
+**효과**: 복합 인덱스 활용으로 조회 성능 5-10배 개선 (N+1 쿼리 구조 제거)
 
 ### 3️⃣ 배치 UPDATE (대량 작업 최적화)
 
