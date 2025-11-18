@@ -8,7 +8,7 @@ import java.time.LocalDateTime
  * 상품 정보만 관리하며, 재고 관리는 Inventory 도메인이 담당합니다.
  */
 data class Product(
-    val id: String,
+    val id: Long,
     val name: String,
     val description: String?,
     val price: Long,

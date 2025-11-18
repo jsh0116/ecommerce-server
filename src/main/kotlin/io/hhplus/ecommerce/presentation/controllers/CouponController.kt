@@ -50,7 +50,7 @@ class CouponController(
 
         val couponInfo = result.coupon?.let { coupon ->
             CouponInfo(
-                id = coupon.id,
+                id = coupon.id.toString(),
                 code = coupon.code,
                 name = coupon.name,
                 type = coupon.type.name,

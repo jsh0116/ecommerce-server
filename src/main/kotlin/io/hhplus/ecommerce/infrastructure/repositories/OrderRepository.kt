@@ -21,7 +21,7 @@ interface OrderRepository {
      * @param id 주문 ID
      * @return 주문 또는 null
      */
-    fun findById(id: String): Order?
+    fun findById(id: Long): Order?
 
     /**
      * 사용자 ID로 주문 목록을 조회합니다.
@@ -29,7 +29,7 @@ interface OrderRepository {
      * @param userId 사용자 ID
      * @return 주문 목록
      */
-    fun findByUserId(userId: String): List<Order>
+    fun findByUserId(userId: Long): List<Order>
 
     /**
      * 주문을 업데이트합니다.

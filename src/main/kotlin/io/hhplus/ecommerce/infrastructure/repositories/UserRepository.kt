@@ -9,7 +9,7 @@ interface UserRepository {
     /**
      * 사용자 단건 조회
      */
-    fun findById(id: String): User?
+    fun findById(id: Long): User?
 
     /**
      * 사용자 저장
