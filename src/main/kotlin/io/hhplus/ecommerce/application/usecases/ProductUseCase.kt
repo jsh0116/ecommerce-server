@@ -18,7 +18,7 @@ class ProductUseCase(
     /**
      * 상품 단건 조회
      */
-    fun getProductById(productId: Long): Product? {
+    fun getProductById(productId: String): Product? {
         return productRepository.findById(productId)
     }
     /**
@@ -45,7 +45,7 @@ class ProductUseCase(
     /**
      * 상품 조회 (조회수 증가)
      */
-    fun viewProduct(productId: Long): Product {
+    fun viewProduct(productId: String): Product {
         val product = productRepository.findById(productId)
             ?: throw IllegalStateException("상품을 찾을 수 없습니다")
 
@@ -59,7 +59,7 @@ class ProductUseCase(
     /**
      * 판매량 증가 (주문 완료 시 호출)
      */
-    fun recordSale(productId: Long, quantity: Int) {
+    fun recordSale(productId: String, quantity: Int) {
         val product = productRepository.findById(productId)
             ?: throw IllegalStateException("상품을 찾을 수 없습니다")
 
@@ -121,13 +121,13 @@ class ProductUseCase(
     /**
      * 재고 확인
      */
-    fun checkStock(productId: Long, quantity: Int): StockCheckResponse {
+    fun checkStock(productId: String, quantity: Int): StockCheckResponse {
         // 상품 조회
         val product = productRepository.findById(productId)
             ?: throw IllegalStateException("상품을 찾을 수 없습니다")
 
         // 재고 조회 (Product ID를 SKU로 사용)
-        val inventory = inventoryRepository.findBySku(productId.toString())
+        val inventory = inventoryRepository.findBySku(productId)
             ?: throw IllegalStateException("재고 정보를 찾을 수 없습니다")
 
         // 재고 정보 반환

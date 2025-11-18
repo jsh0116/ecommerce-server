@@ -16,7 +16,7 @@ enum class CouponType {
  * 쿠폰 도메인 모델
  */
 data class Coupon(
-    val id: Long,
+    val id: String,
     val code: String = "",
     val name: String,
     val type: CouponType = CouponType.FIXED_AMOUNT,
@@ -55,8 +55,8 @@ data class Coupon(
  * 사용자 쿠폰 엔티티
  */
 data class UserCoupon(
-    val userId: Long,
-    val couponId: Long,
+    val userId: String,
+    val couponId: String,
     val couponName: String,
     val discountRate: Int,
     var status: String = "AVAILABLE",

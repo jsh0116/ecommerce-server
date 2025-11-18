@@ -22,28 +22,6 @@ services:
       - hhplus-network
     restart: unless-stopped
 
-  # MySQL (메인 데이터베이스)
-  mysql:
-    image: mysql:8.0
-    container_name: hhplus-ecommerce-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: hhplus_ecommerce
-      MYSQL_ALLOW_EMPTY_PASSWORD: "no"
-      TZ: "Asia/Seoul"
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    networks:
-      - hhplus-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 10s
-      retries: 5
-      interval: 10s
-
   # 옵션: Redis (캐싱/분산 락용)
   redis:
     image: redis:7-alpine
@@ -82,6 +60,5 @@ networks:
     driver: bridge
 
 volumes:
-  mysql_data:
   redis-data:
   postgres-data:

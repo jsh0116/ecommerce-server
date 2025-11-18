@@ -31,23 +31,23 @@ class OrderUseCase(
      * 주문 생성
      */
     fun createOrder(
-        userId: Long,
+        userId: String,
         items: List<OrderItemRequest>,
-        couponId: Long?
+        couponId: String?
     ): Order {
         // 사용자 확인
         val user = userRepository.findById(userId)
-            ?: throw UserException.UserNotFound(userId.toString())
+            ?: throw UserException.UserNotFound(userId)
 
         // 상품 및 재고 확인
         val orderItems = mutableListOf<OrderItem>()
         for (req in items) {
             val product = productRepository.findById(req.productId)
-                ?: throw ProductException.ProductNotFound(req.productId.toString())
+                ?: throw ProductException.ProductNotFound(req.productId)
 
             // 재고 확인 (Product ID를 SKU로 사용)
-            val inventory = inventoryRepository.findBySku(product.id.toString())
-                ?: throw InventoryException.InventoryNotFound(product.id.toString())
+            val inventory = inventoryRepository.findBySku(product.id)
+                ?: throw InventoryException.InventoryNotFound(product.id)
 
             if (!inventory.canReserve(req.quantity)) {
                 throw InventoryException.InsufficientStock(
@@ -79,7 +79,7 @@ class OrderUseCase(
         val finalAmount = totalAmount - discount
 
         val order = Order(
-            id = System.currentTimeMillis(),
+            id = UUID.randomUUID().toString(),
             userId = userId,
             items = orderItems,
             totalAmount = totalAmount,
@@ -94,21 +94,21 @@ class OrderUseCase(
     /**
      * 주문 조회
      */
-    fun getOrderById(orderId: Long): Order? {
+    fun getOrderById(orderId: String): Order? {
         return orderRepository.findById(orderId)
     }
 
     /**
      * 사용자 주문 목록 조회
      */
-    fun getOrdersByUserId(userId: Long): List<Order> {
+    fun getOrdersByUserId(userId: String): List<Order> {
         return orderRepository.findByUserId(userId)
     }
 
     /**
      * 주문 상태 업데이트
      */
-    fun updateOrderStatus(orderId: Long, newStatus: String): Order? {
+    fun updateOrderStatus(orderId: String, newStatus: String): Order? {
         val order = orderRepository.findById(orderId) ?: return null
 
         // Order 도메인에 상태 변경 메서드가 있다면 사용
@@ -132,9 +132,9 @@ class OrderUseCase(
     /**
      * 주문 취소 및 재고 복구
      */
-    fun cancelOrder(orderId: Long, userId: Long): Order {
+    fun cancelOrder(orderId: String, userId: String): Order {
         val order = orderRepository.findById(orderId)
-            ?: throw OrderException.OrderNotFound(orderId.toString())
+            ?: throw OrderException.OrderNotFound(orderId)
 
         if (order.userId != userId) {
             throw OrderException.UnauthorizedOrderAccess()
@@ -149,7 +149,7 @@ class OrderUseCase(
 
         // 재고 복구
         for (item in order.items) {
-            val inventory = inventoryRepository.findBySku(item.productId.toString())
+            val inventory = inventoryRepository.findBySku(item.productId)
             if (inventory != null) {
                 inventory.restoreStock(item.quantity)
                 inventoryRepository.save(inventory)
@@ -162,10 +162,10 @@ class OrderUseCase(
     /**
      * 결제 처리
      */
-    fun processPayment(orderId: Long, userId: Long): PaymentResult {
+    fun processPayment(orderId: String, userId: String): PaymentResult {
         // 주문 확인
         val order = orderRepository.findById(orderId)
-            ?: throw OrderException.OrderNotFound(orderId.toString())
+            ?: throw OrderException.OrderNotFound(orderId)
 
         if (order.userId != userId) {
             throw OrderException.UnauthorizedOrderAccess()
@@ -177,7 +177,7 @@ class OrderUseCase(
 
         // 잔액 확인 및 차감
         val user = userRepository.findById(userId)
-            ?: throw UserException.UserNotFound(userId.toString())
+            ?: throw UserException.UserNotFound(userId)
 
         if (user.balance < order.finalAmount) {
             throw UserException.InsufficientBalance(
@@ -191,8 +191,8 @@ class OrderUseCase(
 
         // 재고 차감 및 판매량 증가 (Product ID를 SKU로 사용)
         for (item in order.items) {
-            val inventory = inventoryRepository.findBySku(item.productId.toString())
-                ?: throw InventoryException.InventoryNotFound(item.productId.toString())
+            val inventory = inventoryRepository.findBySku(item.productId)
+                ?: throw InventoryException.InventoryNotFound(item.productId)
 
             // 실제 재고 차감
             inventory.confirmReservation(item.quantity)
@@ -242,17 +242,17 @@ class OrderUseCase(
     }
 
     // 내부 DTO 정의
-    data class OrderItemRequest(val productId: Long, val quantity: Int)
+    data class OrderItemRequest(val productId: String, val quantity: Int)
     data class PaymentResult(
-        val orderId: Long,
+        val orderId: String,
         val paidAmount: Long,
         val remainingBalance: Long,
         val status: String
     )
 
     data class DataPayload(
-        val orderId: Long,
-        val userId: Long,
+        val orderId: String,
+        val userId: String,
         val items: List<OrderItem>,
         val totalAmount: Long,
         val discountAmount: Long,

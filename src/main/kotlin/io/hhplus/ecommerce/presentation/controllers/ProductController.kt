@@ -101,7 +101,7 @@ class ProductController(
 
         val productDtos = filteredProducts.map { p ->
             ProductDto(
-                id = p.id.toString(),
+                id = p.id,
                 name = p.name,
                 brand = "Brand",
                 category = p.category,
@@ -156,14 +156,11 @@ class ProductController(
         )
         @PathVariable productId: String
     ): ResponseEntity<ProductDetailResponse> {
-        val productIdLong = productId.toLongOrNull()
-            ?: return ResponseEntity.notFound().build()
-
-        val product = productUseCase.getProductById(productIdLong)
+        val product = productUseCase.getProductById(productId)
             ?: return ResponseEntity.notFound().build()
 
         // 재고 조회
-        val inventory = inventoryUseCase.getInventoryBySku(product.id.toString())
+        val inventory = inventoryUseCase.getInventoryBySku(product.id)
         val availableStock = inventory?.getAvailableStock() ?: 0
         val stockStatus = if (availableStock > 0) "IN_STOCK" else "OUT_OF_STOCK"
 
@@ -185,7 +182,7 @@ class ProductController(
 
         return ResponseEntity.ok(
             ProductDetailResponse(
-                id = product.id.toString(),
+                id = product.id,
                 name = product.name,
                 brand = "Brand",
                 category = product.category,
@@ -247,14 +244,11 @@ class ProductController(
         )
         @RequestParam(required = false) inStock: Boolean?
     ): ResponseEntity<List<ProductVariantDto>> {
-        val productIdLong = productId.toLongOrNull()
-            ?: return ResponseEntity.notFound().build()
-
-        val product = productUseCase.getProductById(productIdLong)
+        val product = productUseCase.getProductById(productId)
             ?: return ResponseEntity.notFound().build()
 
         // 재고 조회
-        val inventory = inventoryUseCase.getInventoryBySku(product.id.toString())
+        val inventory = inventoryUseCase.getInventoryBySku(product.id)
         val availableStock = inventory?.getAvailableStock() ?: 0
         val stockStatus = if (availableStock > 0) "IN_STOCK" else "OUT_OF_STOCK"
 
@@ -327,7 +321,7 @@ class ProductController(
 
         val productDtos = searchResults.map { p ->
             ProductDto(
-                id = p.id.toString(),
+                id = p.id,
                 name = p.name,
                 brand = "Brand",
                 category = p.category,

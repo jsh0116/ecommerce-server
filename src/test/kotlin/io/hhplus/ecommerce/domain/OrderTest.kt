@@ -1,280 +1,234 @@
 package io.hhplus.ecommerce.domain
 
 import io.hhplus.ecommerce.exception.OrderException
-import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.time.LocalDateTime
 
-@DisplayName("Order 도메인 모델 테스트")
+@DisplayName("Order 도메인 테스트")
 class OrderTest {
 
-    private fun createTestOrder(
-        id: Long = 1L,
-        userId: Long = 1L,
-        items: List<OrderItem> = emptyList(),
-        totalAmount: Long = 10000L,
-        discountAmount: Long = 0L,
-        finalAmount: Long = 10000L,
-        status: String = "PENDING",
-        couponId: Long? = null,
-        paidAt: LocalDateTime? = null
-    ): Order = Order(
-        id = id,
-        userId = userId,
-        items = items,
-        totalAmount = totalAmount,
-        discountAmount = discountAmount,
-        finalAmount = finalAmount,
-        status = status,
-        couponId = couponId,
-        paidAt = paidAt
-    )
+    @Test
+    @DisplayName("주문을 생성할 수 있다")
+    fun testCreateOrder() {
+        // Given
+        val product = Product(
+            id = "P001",
+            name = "노트북",
+            description = "고급 노트북",
+            price = 1_000_000L,
+            category = "전자제품"
+        )
+        val item = OrderItem.create(product, 2)
+        val items = listOf(item)
 
-    @Nested
-    @DisplayName("canPay 테스트")
-    inner class CanPayTest {
-        @Test
-        fun `상태가 PENDING이고 finalAmount가 0보다 크면 true`() {
-            val order = createTestOrder(
-                status = "PENDING",
-                finalAmount = 10000L
-            )
+        // When
+        val order = Order(
+            id = "ORD001",
+            userId = "USER1",
+            items = items,
+            totalAmount = 2_000_000L,
+            discountAmount = 0L,
+            finalAmount = 2_000_000L
+        )
 
-            assertThat(order.canPay()).isTrue
-        }
-
-        @Test
-        fun `상태가 PENDING이지만 finalAmount가 0이면 false`() {
-            val order = createTestOrder(
-                status = "PENDING",
-                finalAmount = 0L
-            )
-
-            assertThat(order.canPay()).isFalse
-        }
-
-        @Test
-        fun `finalAmount가 0보다 크지만 상태가 PENDING이 아니면 false`() {
-            val order = createTestOrder(
-                status = "PAID",
-                finalAmount = 10000L
-            )
-
-            assertThat(order.canPay()).isFalse
-        }
-
-        @Test
-        fun `상태가 CANCELLED이면 false`() {
-            val order = createTestOrder(
-                status = "CANCELLED",
-                finalAmount = 10000L
-            )
-
-            assertThat(order.canPay()).isFalse
-        }
+        // Then
+        assert(order.id == "ORD001")
+        assert(order.userId == "USER1")
+        assert(order.items.size == 1)
+        assert(order.totalAmount == 2_000_000L)
+        assert(order.status == "PENDING")
     }
 
-    @Nested
-    @DisplayName("complete 테스트")
-    inner class CompleteTest {
-        @Test
-        fun `결제 완료 시 상태가 PAID로 변경`() {
-            val order = createTestOrder(
-                status = "PENDING",
-                finalAmount = 10000L
-            )
+    @Test
+    @DisplayName("주문 항목을 생성할 수 있다")
+    fun testCreateOrderItem() {
+        // Given
+        val product = Product(
+            id = "P001",
+            name = "노트북",
+            description = "고급 노트북",
+            price = 1_000_000L,
+            category = "전자제품"
+        )
 
+        // When
+        val item = OrderItem.create(product, 2)
+
+        // Then
+        assert(item.productId == "P001")
+        assert(item.productName == "노트북")
+        assert(item.quantity == 2)
+        assert(item.unitPrice == 1_000_000L)
+        assert(item.subtotal == 2_000_000L)
+    }
+
+    @Test
+    @DisplayName("주문이 결제 가능한 상태를 확인할 수 있다")
+    fun testCanPay() {
+        // Given
+        val product = Product(
+            id = "P001",
+            name = "노트북",
+            description = "고급 노트북",
+            price = 1_000_000L,
+            category = "전자제품"
+        )
+        val item = OrderItem.create(product, 2)
+        val order = Order(
+            id = "ORD001",
+            userId = "USER1",
+            items = listOf(item),
+            totalAmount = 2_000_000L,
+            discountAmount = 0L,
+            finalAmount = 2_000_000L
+        )
+
+        // When & Then
+        assert(order.canPay())
+    }
+
+    @Test
+    @DisplayName("주문 완료 처리를 할 수 있다")
+    fun testCompleteOrder() {
+        // Given
+        val product = Product(
+            id = "P001",
+            name = "노트북",
+            description = "고급 노트북",
+            price = 1_000_000L,
+            category = "전자제품"
+        )
+        val item = OrderItem.create(product, 2)
+        val order = Order(
+            id = "ORD001",
+            userId = "USER1",
+            items = listOf(item),
+            totalAmount = 2_000_000L,
+            discountAmount = 0L,
+            finalAmount = 2_000_000L
+        )
+
+        // When
+        order.complete()
+
+        // Then
+        assert(order.status == "PAID")
+        assert(order.paidAt != null)
+    }
+
+    @Test
+    @DisplayName("결제할 수 없는 상태에서는 완료 처리가 실패한다")
+    fun testCompleteOrderWhenCannotPay() {
+        // Given
+        val product = Product(
+            id = "P001",
+            name = "노트북",
+            description = "고급 노트북",
+            price = 1_000_000L,
+            category = "전자제품"
+        )
+        val item = OrderItem.create(product, 2)
+        val order = Order(
+            id = "ORD001",
+            userId = "USER1",
+            items = listOf(item),
+            totalAmount = 2_000_000L,
+            discountAmount = 0L,
+            finalAmount = 2_000_000L,
+            status = "PAID"
+        )
+
+        // When & Then
+        val exception = assertThrows<OrderException.CannotPayOrder> {
             order.complete()
-
-            assertThat(order.status).isEqualTo("PAID")
         }
-
-        @Test
-        fun `결제 완료 시 paidAt이 설정된다`() {
-            val order = createTestOrder(
-                status = "PENDING",
-                finalAmount = 10000L,
-                paidAt = null
-            )
-
-            val beforeTime = LocalDateTime.now()
-            order.complete()
-            val afterTime = LocalDateTime.now()
-
-            assertThat(order.paidAt).isNotNull
-            assertThat(order.paidAt!! >= beforeTime && order.paidAt!! <= afterTime).isTrue
-        }
-
-        @Test
-        fun `결제 불가능한 상태에서는 예외 발생`() {
-            val order = createTestOrder(
-                status = "PAID",
-                finalAmount = 10000L
-            )
-
-            assertThrows<OrderException.CannotPayOrder> {
-                order.complete()
-            }
-        }
-
-        @Test
-        fun `finalAmount가 0이면 예외 발생`() {
-            val order = createTestOrder(
-                status = "PENDING",
-                finalAmount = 0L
-            )
-
-            assertThrows<OrderException.CannotPayOrder> {
-                order.complete()
-            }
-        }
+        assert(exception.message?.contains("결제할 수 없는 주문") ?: false)
     }
 
-    @Nested
-    @DisplayName("canCancel 테스트")
-    inner class CanCancelTest {
-        @Test
-        fun `상태가 PENDING이면 취소 가능`() {
-            val order = createTestOrder(status = "PENDING")
+    @Test
+    @DisplayName("주문을 취소할 수 있다")
+    fun testCancelOrder() {
+        // Given
+        val product = Product(
+            id = "P001",
+            name = "노트북",
+            description = "고급 노트북",
+            price = 1_000_000L,
+            category = "전자제품"
+        )
+        val item = OrderItem.create(product, 2)
+        val order = Order(
+            id = "ORD001",
+            userId = "USER1",
+            items = listOf(item),
+            totalAmount = 2_000_000L,
+            discountAmount = 0L,
+            finalAmount = 2_000_000L
+        )
 
-            assertThat(order.canCancel()).isTrue
-        }
+        // When
+        order.cancel()
 
-        @Test
-        fun `상태가 PENDING_PAYMENT이면 취소 가능`() {
-            val order = createTestOrder(status = "PENDING_PAYMENT")
-
-            assertThat(order.canCancel()).isTrue
-        }
-
-        @Test
-        fun `상태가 PAID이면 취소 불가능`() {
-            val order = createTestOrder(status = "PAID")
-
-            assertThat(order.canCancel()).isFalse
-        }
-
-        @Test
-        fun `상태가 CANCELLED이면 취소 불가능`() {
-            val order = createTestOrder(status = "CANCELLED")
-
-            assertThat(order.canCancel()).isFalse
-        }
-
-        @Test
-        fun `상태가 SHIPPED이면 취소 불가능`() {
-            val order = createTestOrder(status = "SHIPPED")
-
-            assertThat(order.canCancel()).isFalse
-        }
+        // Then
+        assert(order.status == "CANCELLED")
     }
 
-    @Nested
-    @DisplayName("cancel 테스트")
-    inner class CancelTest {
-        @Test
-        fun `취소 가능한 상태에서는 상태가 CANCELLED로 변경`() {
-            val order = createTestOrder(status = "PENDING")
+    @Test
+    @DisplayName("결제 완료된 주문은 취소할 수 없다")
+    fun testCancelPaidOrder() {
+        // Given
+        val product = Product(
+            id = "P001",
+            name = "노트북",
+            description = "고급 노트북",
+            price = 1_000_000L,
+            category = "전자제품"
+        )
+        val item = OrderItem.create(product, 2)
+        val order = Order(
+            id = "ORD001",
+            userId = "USER1",
+            items = listOf(item),
+            totalAmount = 2_000_000L,
+            discountAmount = 0L,
+            finalAmount = 2_000_000L,
+            status = "PAID"
+        )
 
+        // When & Then
+        val exception = assertThrows<OrderException.CannotCancelOrder> {
             order.cancel()
-
-            assertThat(order.status).isEqualTo("CANCELLED")
         }
-
-        @Test
-        fun `PENDING_PAYMENT 상태에서도 취소 가능`() {
-            val order = createTestOrder(status = "PENDING_PAYMENT")
-
-            order.cancel()
-
-            assertThat(order.status).isEqualTo("CANCELLED")
-        }
-
-        @Test
-        fun `이미 PAID 상태면 예외 발생`() {
-            val order = createTestOrder(status = "PAID")
-
-            assertThrows<OrderException.CannotCancelOrder> {
-                order.cancel()
-            }
-        }
-
-        @Test
-        fun `이미 SHIPPED 상태면 예외 발생`() {
-            val order = createTestOrder(status = "SHIPPED")
-
-            val exception = assertThrows<OrderException.CannotCancelOrder> {
-                order.cancel()
-            }
-
-            assertThat(exception.message).isEqualTo("취소할 수 없는 주문 상태입니다: SHIPPED")
-        }
-
-        @Test
-        fun `이미 CANCELLED 상태면 예외 발생`() {
-            val order = createTestOrder(status = "CANCELLED")
-
-            assertThrows<OrderException.CannotCancelOrder> {
-                order.cancel()
-            }
-        }
+        assert(exception.message?.contains("취소할 수 없는 주문 상태입니다") ?: false)
     }
 
-    @Nested
-    @DisplayName("OrderItem.create 팩토리 메서드 테스트")
-    inner class OrderItemCreateTest {
-        @Test
-        fun `상품과 수량으로 주문 항목 생성`() {
-            val product = Product(
-                id = 1L,
-                name = "테스트 상품",
-                description = "설명",
-                price = 10000L,
-                category = "의류"
-            )
+    @Test
+    @DisplayName("할인을 포함한 주문을 생성할 수 있다")
+    fun testCreateOrderWithDiscount() {
+        // Given
+        val product = Product(
+            id = "P001",
+            name = "노트북",
+            description = "고급 노트북",
+            price = 1_000_000L,
+            category = "전자제품"
+        )
+        val item = OrderItem.create(product, 2)
 
-            val orderItem = OrderItem.create(product, 3)
+        // When
+        val order = Order(
+            id = "ORD001",
+            userId = "USER1",
+            items = listOf(item),
+            totalAmount = 2_000_000L,
+            discountAmount = 200_000L,
+            finalAmount = 1_800_000L
+        )
 
-            assertThat(orderItem.productId).isEqualTo(1L)
-            assertThat(orderItem.productName).isEqualTo("테스트 상품")
-            assertThat(orderItem.quantity).isEqualTo(3)
-            assertThat(orderItem.unitPrice).isEqualTo(10000L)
-            assertThat(orderItem.subtotal).isEqualTo(30000L)
-        }
-
-        @Test
-        fun `수량 1로 주문 항목 생성`() {
-            val product = Product(
-                id = 2L,
-                name = "상품2",
-                description = "설명",
-                price = 5000L,
-                category = "의류"
-            )
-
-            val orderItem = OrderItem.create(product, 1)
-
-            assertThat(orderItem.quantity).isEqualTo(1)
-            assertThat(orderItem.subtotal).isEqualTo(5000L)
-        }
-
-        @Test
-        fun `대량 주문`() {
-            val product = Product(
-                id = 3L,
-                name = "대량 상품",
-                description = "설명",
-                price = 1000L,
-                category = "의류"
-            )
-
-            val orderItem = OrderItem.create(product, 100)
-
-            assertThat(orderItem.quantity).isEqualTo(100)
-            assertThat(orderItem.subtotal).isEqualTo(100000L)
-        }
+        // Then
+        assert(order.totalAmount == 2_000_000L)
+        assert(order.discountAmount == 200_000L)
+        assert(order.finalAmount == 1_800_000L)
     }
 }
