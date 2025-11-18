@@ -1,240 +1,216 @@
 package io.hhplus.ecommerce.domain
 
 import io.hhplus.ecommerce.exception.CouponException
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.LocalDateTime
 
-@DisplayName("Coupon 도메인 테스트")
+@DisplayName("Coupon 도메인 모델 테스트")
 class CouponTest {
 
-    @Test
-    @DisplayName("쿠폰을 발급할 수 있다")
-    fun testIssueCoupon() {
-        // Given
-        val now = LocalDateTime.now()
-        val coupon = Coupon(
-            id = "C001",
-            code = "COUPON2024",
-            name = "할인 쿠폰",
-            type = CouponType.PERCENTAGE,
-            discount = 0L,
-            discountRate = 10,
-            minOrderAmount = 10_000L,
-            maxDiscountAmount = 50_000L,
-            totalQuantity = 100,
-            issuedQuantity = 0,
-            startDate = now.minusDays(1),
-            endDate = now.plusDays(30)
-        )
-
-        // When
-        val remaining = coupon.issue()
-
-        // Then
-        assert(coupon.issuedQuantity == 1)
-        assert(remaining == 99)
-    }
-
-    @Test
-    @DisplayName("발급 수량 초과시 예외를 발생시킨다")
-    fun testIssueCouponWhenExceedQuantity() {
-        // Given
-        val now = LocalDateTime.now()
-        val coupon = Coupon(
-            id = "C001",
-            code = "COUPON2024",
-            name = "할인 쿠폰",
-            type = CouponType.PERCENTAGE,
-            discount = 0L,
-            discountRate = 10,
-            minOrderAmount = 10_000L,
-            maxDiscountAmount = 50_000L,
-            totalQuantity = 1,
-            issuedQuantity = 1,
-            startDate = now.minusDays(1),
-            endDate = now.plusDays(30)
-        )
-
-        // When & Then
-        val exception = assertThrows<CouponException.CannotIssueCoupon> {
-            coupon.issue()
+    @Nested
+    @DisplayName("canIssue 테스트")
+    inner class CanIssueTest {
+        @Test
+        fun `발급 가능한 쿠폰은 true 반환`() {
+            val coupon = Coupon(
+                id = 1L, code = "TEST", name = "테스트",
+                discountRate = 10, totalQuantity = 100, issuedQuantity = 50,
+                startDate = LocalDateTime.now().minusHours(1),
+                endDate = LocalDateTime.now().plusHours(1)
+            )
+            assertThat(coupon.canIssue()).isTrue
         }
-        assert(exception.message?.contains("쿠폰을 발급할 수 없습니다") ?: false)
-    }
 
-    @Test
-    @DisplayName("유효 기간 지난 쿠폰은 발급할 수 없다")
-    fun testIssueCouponWhenExpired() {
-        // Given
-        val now = LocalDateTime.now()
-        val coupon = Coupon(
-            id = "C001",
-            code = "COUPON2024",
-            name = "할인 쿠폰",
-            type = CouponType.PERCENTAGE,
-            discount = 0L,
-            discountRate = 10,
-            minOrderAmount = 10_000L,
-            maxDiscountAmount = 50_000L,
-            totalQuantity = 100,
-            issuedQuantity = 0,
-            startDate = now.minusDays(30),
-            endDate = now.minusDays(1)
-        )
-
-        // When & Then
-        val exception = assertThrows<CouponException.CannotIssueCoupon> {
-            coupon.issue()
+        @Test
+        fun `발급 수량 초과 시 false`() {
+            val coupon = Coupon(
+                id = 1L, code = "TEST", name = "테스트",
+                discountRate = 10, totalQuantity = 100, issuedQuantity = 100,
+                startDate = LocalDateTime.now().minusHours(1),
+                endDate = LocalDateTime.now().plusHours(1)
+            )
+            assertThat(coupon.canIssue()).isFalse
         }
-        assert(exception.message?.contains("쿠폰을 발급할 수 없습니다") ?: false)
+
+        @Test
+        fun `시작일 이전이면 발급 불가`() {
+            val coupon = Coupon(
+                id = 1L, code = "TEST", name = "테스트",
+                discountRate = 10, totalQuantity = 100, issuedQuantity = 50,
+                startDate = LocalDateTime.now().plusDays(1),
+                endDate = LocalDateTime.now().plusDays(8)
+            )
+            assertThat(coupon.canIssue()).isFalse
+        }
+
+        @Test
+        fun `종료일 이후이면 발급 불가`() {
+            val coupon = Coupon(
+                id = 1L, code = "TEST", name = "테스트",
+                discountRate = 10, totalQuantity = 100, issuedQuantity = 50,
+                startDate = LocalDateTime.now().minusDays(8),
+                endDate = LocalDateTime.now().minusDays(1)
+            )
+            assertThat(coupon.canIssue()).isFalse
+        }
     }
 
-    @Test
-    @DisplayName("쿠폰 발급 가능 여부를 확인할 수 있다")
-    fun testCanIssueCoupon() {
-        // Given
-        val now = LocalDateTime.now()
-        val coupon = Coupon(
-            id = "C001",
-            code = "COUPON2024",
-            name = "할인 쿠폰",
-            type = CouponType.PERCENTAGE,
-            discount = 0L,
-            discountRate = 10,
-            minOrderAmount = 10_000L,
-            maxDiscountAmount = 50_000L,
-            totalQuantity = 100,
-            issuedQuantity = 0,
-            startDate = now.minusDays(1),
-            endDate = now.plusDays(30)
-        )
+    @Nested
+    @DisplayName("issue 테스트")
+    inner class IssueTest {
+        @Test
+        fun `쿠폰 발급 시 issuedQuantity 증가`() {
+            val coupon = Coupon(
+                id = 1L, code = "TEST", name = "테스트",
+                discountRate = 10, totalQuantity = 100, issuedQuantity = 0,
+                startDate = LocalDateTime.now().minusHours(1),
+                endDate = LocalDateTime.now().plusHours(1)
+            )
+            coupon.issue()
+            assertThat(coupon.issuedQuantity).isEqualTo(1)
+        }
 
-        // When & Then
-        assert(coupon.canIssue())
+        @Test
+        fun `남은 쿠폰 수량 반환`() {
+            val coupon = Coupon(
+                id = 1L, code = "TEST", name = "테스트",
+                discountRate = 10, totalQuantity = 100, issuedQuantity = 30,
+                startDate = LocalDateTime.now().minusHours(1),
+                endDate = LocalDateTime.now().plusHours(1)
+            )
+            val remaining = coupon.issue()
+            assertThat(remaining).isEqualTo(69)
+        }
+
+        @Test
+        fun `발급 불가능한 상태에서는 예외 발생`() {
+            val coupon = Coupon(
+                id = 1L, code = "TEST", name = "테스트",
+                discountRate = 10, totalQuantity = 100, issuedQuantity = 100,
+                startDate = LocalDateTime.now().minusHours(1),
+                endDate = LocalDateTime.now().plusHours(1)
+            )
+            assertThrows<CouponException.CannotIssueCoupon> { coupon.issue() }
+        }
+    }
+}
+
+@DisplayName("UserCoupon 도메인 모델 테스트")
+class UserCouponTest {
+
+    @Nested
+    @DisplayName("isValid 테스트")
+    inner class IsValidTest {
+        @Test
+        fun `상태가 AVAILABLE이고 유효기간 내이면 true`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "AVAILABLE",
+                expiresAt = LocalDateTime.now().plusDays(1)
+            )
+            assertThat(userCoupon.isValid()).isTrue
+        }
+
+        @Test
+        fun `상태가 USED이면 false`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "USED"
+            )
+            assertThat(userCoupon.isValid()).isFalse
+        }
+
+        @Test
+        fun `상태가 EXPIRED이면 false`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "EXPIRED"
+            )
+            assertThat(userCoupon.isValid()).isFalse
+        }
+
+        @Test
+        fun `유효기간 만료되면 false`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "AVAILABLE",
+                expiresAt = LocalDateTime.now().minusDays(1)
+            )
+            assertThat(userCoupon.isValid()).isFalse
+        }
     }
 
-    @Test
-    @DisplayName("사용자 쿠폰을 생성할 수 있다")
-    fun testCreateUserCoupon() {
-        // Given
-        val now = LocalDateTime.now()
-        val coupon = Coupon(
-            id = "C001",
-            code = "COUPON2024",
-            name = "할인 쿠폰",
-            type = CouponType.PERCENTAGE,
-            discount = 0L,
-            discountRate = 10,
-            minOrderAmount = 10_000L,
-            maxDiscountAmount = 50_000L,
-            totalQuantity = 100,
-            issuedQuantity = 0,
-            startDate = now.minusDays(1),
-            endDate = now.plusDays(30)
-        )
-
-        // When
-        val userCoupon = UserCoupon(
-            userId = "USER1",
-            couponId = coupon.id,
-            couponName = coupon.name,
-            discountRate = coupon.discountRate
-        )
-
-        // Then
-        assert(userCoupon.userId == "USER1")
-        assert(userCoupon.couponId == "C001")
-        assert(userCoupon.couponName == "할인 쿠폰")
-        assert(userCoupon.discountRate == 10)
-        assert(userCoupon.status == "AVAILABLE")
-    }
-
-    @Test
-    @DisplayName("사용자 쿠폰 유효성을 확인할 수 있다")
-    fun testIsValidUserCoupon() {
-        // Given
-        val userCoupon = UserCoupon(
-            userId = "USER1",
-            couponId = "C001",
-            couponName = "할인 쿠폰",
-            discountRate = 10
-        )
-
-        // When & Then
-        assert(userCoupon.isValid())
-    }
-
-    @Test
-    @DisplayName("사용된 쿠폰은 유효하지 않다")
-    fun testUsedUserCouponIsNotValid() {
-        // Given
-        val userCoupon = UserCoupon(
-            userId = "USER1",
-            couponId = "C001",
-            couponName = "할인 쿠폰",
-            discountRate = 10,
-            status = "USED"
-        )
-
-        // When & Then
-        assert(!userCoupon.isValid())
-    }
-
-    @Test
-    @DisplayName("사용자 쿠폰을 사용할 수 있다")
-    fun testUseUserCoupon() {
-        // Given
-        val userCoupon = UserCoupon(
-            userId = "USER1",
-            couponId = "C001",
-            couponName = "할인 쿠폰",
-            discountRate = 10
-        )
-
-        // When
-        userCoupon.use()
-
-        // Then
-        assert(userCoupon.status == "USED")
-        assert(userCoupon.usedAt != null)
-    }
-
-    @Test
-    @DisplayName("유효하지 않은 쿠폰은 사용할 수 없다")
-    fun testUseInvalidUserCoupon() {
-        // Given
-        val userCoupon = UserCoupon(
-            userId = "USER1",
-            couponId = "C001",
-            couponName = "할인 쿠폰",
-            discountRate = 10,
-            status = "USED"
-        )
-
-        // When & Then
-        val exception = assertThrows<CouponException.CannotUseCoupon> {
+    @Nested
+    @DisplayName("use 테스트")
+    inner class UseTest {
+        @Test
+        fun `쿠폰 사용 시 상태가 USED로 변경`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "AVAILABLE",
+                expiresAt = LocalDateTime.now().plusDays(1)
+            )
             userCoupon.use()
+            assertThat(userCoupon.status).isEqualTo("USED")
         }
-        assert(exception.message?.contains("사용할 수 없는 쿠폰") ?: false)
+
+        @Test
+        fun `쿠폰 사용 시 usedAt이 설정된다`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "AVAILABLE",
+                usedAt = null,
+                expiresAt = LocalDateTime.now().plusDays(1)
+            )
+            userCoupon.use()
+            assertThat(userCoupon.usedAt).isNotNull
+        }
+
+        @Test
+        fun `유효하지 않은 쿠폰 사용 시 예외 발생`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "USED"
+            )
+            assertThrows<CouponException.CannotUseCoupon> { userCoupon.use() }
+        }
+
+        @Test
+        fun `만료된 쿠폰 사용 시 예외 발생`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "AVAILABLE",
+                expiresAt = LocalDateTime.now().minusDays(1)
+            )
+            assertThrows<CouponException.CannotUseCoupon> { userCoupon.use() }
+        }
     }
 
-    @Test
-    @DisplayName("사용자 쿠폰을 만료시킬 수 있다")
-    fun testExpireUserCoupon() {
-        // Given
-        val userCoupon = UserCoupon(
-            userId = "USER1",
-            couponId = "C001",
-            couponName = "할인 쿠폰",
-            discountRate = 10
-        )
+    @Nested
+    @DisplayName("expire 테스트")
+    inner class ExpireTest {
+        @Test
+        fun `쿠폰 만료 시 상태가 EXPIRED로 변경`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "AVAILABLE"
+            )
+            userCoupon.expire()
+            assertThat(userCoupon.status).isEqualTo("EXPIRED")
+        }
 
-        // When
-        userCoupon.expire()
-
-        // Then
-        assert(userCoupon.status == "EXPIRED")
+        @Test
+        fun `이미 USED인 쿠폰도 EXPIRED로 변경 가능`() {
+            val userCoupon = UserCoupon(
+                userId = 1L, couponId = 1L, couponName = "테스트",
+                discountRate = 10, status = "USED"
+            )
+            userCoupon.expire()
+            assertThat(userCoupon.status).isEqualTo("EXPIRED")
+        }
     }
 }
