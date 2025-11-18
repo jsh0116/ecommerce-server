@@ -736,7 +736,7 @@ CREATE UNIQUE INDEX idx_orders_order_number ON orders(order_number);
 CREATE INDEX idx_orders_user_id ON orders(user_id);
 CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
-CREATE INDEX idx_orders_reservation_expiry ON orders(reservation_expiry) WHERE reservation_expires_at IS NOT NULL;
+CREATE INDEX idx_orders_reservation_expiry ON orders(reservation_expiry) WHERE reservation_expiry IS NOT NULL;
 ```
 
 **비즈니스 규칙:**
