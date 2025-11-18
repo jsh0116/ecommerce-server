@@ -46,24 +46,26 @@ interface OrderJpaRepository : JpaRepository<OrderJpaEntity, Long> {
     fun findExpiredReservationOrders(): List<OrderJpaEntity>
 
     /**
-     * 사용자별 주문 조회 - 복합 인덱스 활용
+     * 사용자별 주문 조회
+     * 복합 인덱스 idx_user_status_paid 활용
      */
     @Query("""
         SELECT o FROM OrderJpaEntity o
         WHERE o.userId = :userId
         ORDER BY o.createdAt DESC
     """)
-    fun findByUserIdOptimized(@Param("userId") userId: Long): List<OrderJpaEntity>
+    fun findByUserId(@Param("userId") userId: Long): List<OrderJpaEntity>
 
     /**
-     * 사용자별, 상태별 주문 조회 - 복합 인덱스 활용
+     * 사용자별, 상태별 주문 조회
+     * 복합 인덱스 idx_user_status_paid 활용
      */
     @Query("""
         SELECT o FROM OrderJpaEntity o
         WHERE o.userId = :userId AND o.status = :status
         ORDER BY o.createdAt DESC
     """)
-    fun findByUserIdAndStatusOptimized(
+    fun findByUserIdAndStatus(
         @Param("userId") userId: Long,
         @Param("status") status: OrderJpaStatus
     ): List<OrderJpaEntity>

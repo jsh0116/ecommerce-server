@@ -70,10 +70,10 @@ class OrderRepositoryOptimizationTest {
 
     @Test
     @DisplayName("사용자별 주문 조회 - 복합 인덱스 활용")
-    fun testFindByUserIdOptimized() {
-        // Act: idx_user_id 인덱스 활용
+    fun testFindByUserId() {
+        // Act: idx_user_status_paid 복합 인덱스 활용
         val startTime = System.currentTimeMillis()
-        val orders = orderRepository.findByUserIdOptimized(testUserId)
+        val orders = orderRepository.findByUserId(testUserId)
         val duration = System.currentTimeMillis() - startTime
 
         // Assert
@@ -84,10 +84,10 @@ class OrderRepositoryOptimizationTest {
 
     @Test
     @DisplayName("사용자별 상태별 주문 조회 - 복합 인덱스 활용")
-    fun testFindByUserIdAndStatusOptimized() {
+    fun testFindByUserIdAndStatus() {
         // Act: idx_user_status_paid 복합 인덱스 활용
         val startTime = System.currentTimeMillis()
-        val orders = orderRepository.findByUserIdAndStatusOptimized(testUserId, OrderJpaStatus.PAID)
+        val orders = orderRepository.findByUserIdAndStatus(testUserId, OrderJpaStatus.PAID)
         val duration = System.currentTimeMillis() - startTime
 
         // Assert
@@ -203,7 +203,7 @@ class OrderRepositoryOptimizationTest {
 
         // Act: 최적화된 쿼리
         val optimizedStart = System.currentTimeMillis()
-        val optimizedOrders = orderRepository.findByUserIdOptimized(testUserId)
+        val optimizedOrders = orderRepository.findByUserId(testUserId)
         val optimizedDuration = System.currentTimeMillis() - optimizedStart
 
         // Assert
@@ -215,7 +215,7 @@ class OrderRepositoryOptimizationTest {
     @DisplayName("결과 정렬 검증: createdAt DESC")
     fun testResultSortingByCreatedAt() {
         // Act
-        val orders = orderRepository.findByUserIdOptimized(testUserId)
+        val orders = orderRepository.findByUserId(testUserId)
 
         // Assert
         assertThat(orders).isNotEmpty
@@ -230,7 +230,7 @@ class OrderRepositoryOptimizationTest {
     @DisplayName("NULL 처리: 빈 결과 처리")
     fun testEmptyResultHandling() {
         // Act: 존재하지 않는 사용자
-        val orders = orderRepository.findByUserIdOptimized(9999L)
+        val orders = orderRepository.findByUserId(9999L)
 
         // Assert
         assertThat(orders).isEmpty()
@@ -240,8 +240,8 @@ class OrderRepositoryOptimizationTest {
     @DisplayName("필터 정확도: 상태별 필터링")
     fun testStatusFilterAccuracy() {
         // Act
-        val paidOrders = orderRepository.findByUserIdAndStatusOptimized(testUserId, OrderJpaStatus.PAID)
-        val pendingOrders = orderRepository.findByUserIdAndStatusOptimized(testUserId, OrderJpaStatus.PENDING_PAYMENT)
+        val paidOrders = orderRepository.findByUserIdAndStatus(testUserId, OrderJpaStatus.PAID)
+        val pendingOrders = orderRepository.findByUserIdAndStatus(testUserId, OrderJpaStatus.PENDING_PAYMENT)
 
         // Assert
         paidOrders.forEach { assertThat(it.status).isEqualTo(OrderJpaStatus.PAID) }
