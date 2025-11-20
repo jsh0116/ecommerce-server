@@ -30,6 +30,9 @@ dependencies {
     implementation(libs.mysql.connector)
     runtimeOnly(libs.h2)
 
+    // Redis & Distributed Lock
+    implementation("org.redisson:redisson-spring-boot-starter:${libs.versions.redisson.get()}")
+
     // Swagger UI & OpenAPI (Springdoc)
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.0.2")
 

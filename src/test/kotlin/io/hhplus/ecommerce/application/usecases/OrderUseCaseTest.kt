@@ -6,7 +6,6 @@ import io.hhplus.ecommerce.domain.OrderItem
 import io.hhplus.ecommerce.domain.Product
 import io.hhplus.ecommerce.domain.User
 import io.hhplus.ecommerce.domain.UserCoupon
-import io.hhplus.ecommerce.application.services.DataTransmissionService
 import io.hhplus.ecommerce.exception.InventoryException
 import io.hhplus.ecommerce.exception.OrderException
 import io.hhplus.ecommerce.exception.ProductException
@@ -26,6 +25,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.springframework.context.ApplicationEventPublisher
 import java.time.LocalDateTime
 
 @DisplayName("OrderUseCase 테스트")
@@ -36,12 +36,12 @@ class OrderUseCaseTest {
     private val userRepository = mockk<UserRepository>()
     private val couponRepository = mockk<CouponRepository>()
     private val inventoryRepository = mockk<InventoryRepository>()
-    private val dataTransmissionService = mockk<DataTransmissionService>(relaxed = true)
     private val productUseCase = mockk<ProductUseCase>()
+    private val eventPublisher = mockk<ApplicationEventPublisher>(relaxed = true)
 
     private val useCase = OrderUseCase(
         orderRepository, productRepository, userRepository,
-        couponRepository, inventoryRepository, dataTransmissionService, productUseCase
+        couponRepository, inventoryRepository, productUseCase, eventPublisher
     )
 
     @Nested
@@ -300,7 +300,6 @@ class OrderUseCaseTest {
             every { couponRepository.findUserCoupon(any(), any()) } returns null
             every { productUseCase.recordSale(1L, 1) } just runs
             every { orderRepository.save(order) } returns order
-            every { dataTransmissionService.send(any()) } just runs
 
             // When
             val result = useCase.processPayment(1L, 1L)
@@ -310,6 +309,7 @@ class OrderUseCaseTest {
             assertThat(result.remainingBalance).isEqualTo(50000L)
             verify { userRepository.save(user) }
             verify { orderRepository.save(order) }
+            verify { eventPublisher.publishEvent(any()) } // Event is published async
         }
 
         @Test
