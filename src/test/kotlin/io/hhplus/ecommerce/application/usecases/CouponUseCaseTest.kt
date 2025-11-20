@@ -18,21 +18,34 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.redisson.api.RLock
+import org.redisson.api.RedissonClient
 import java.time.LocalDateTime
+import java.util.concurrent.TimeUnit
 
 @DisplayName("CouponUseCase 테스트")
 class CouponUseCaseTest {
 
     private val couponRepository = mockk<CouponRepository>()
     private val userRepository = mockk<UserRepository>()
-    private val useCase = CouponUseCase(couponRepository, userRepository)
+    private val redissonClient = mockk<RedissonClient>()
+    private val lock = mockk<RLock>()
+    private val useCase = CouponUseCase(couponRepository, userRepository, redissonClient)
 
     @Nested
     @DisplayName("쿠폰 발급 테스트")
     inner class IssueCouponTest {
+        private fun setupLockMock() {
+            every { redissonClient.getLock(any()) } returns lock
+            every { lock.tryLock(3L, 10L, TimeUnit.SECONDS) } returns true
+            every { lock.isHeldByCurrentThread } returns true
+            every { lock.unlock() } just runs
+        }
+
         @Test
         fun `쿠폰을 발급할 수 있다`() {
             // Given
+            setupLockMock()
             val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
             val coupon = Coupon(
                 id = 1L, code = "COUPON-001", name = "테스트 쿠폰",
@@ -62,6 +75,7 @@ class CouponUseCaseTest {
         @Test
         fun `존재하지 않는 사용자는 예외를 발생시킨다`() {
             // Given
+            setupLockMock()
             every { userRepository.findById(999L) } returns null
 
             // When/Then
@@ -73,6 +87,7 @@ class CouponUseCaseTest {
         @Test
         fun `이미 발급받은 쿠폰은 예외를 발생시킨다`() {
             // Given
+            setupLockMock()
             val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
             val userCoupon = UserCoupon(userId = 1L, couponId = 1L, couponName = "이미 발급됨", discountRate = 10)
 
@@ -88,6 +103,7 @@ class CouponUseCaseTest {
         @Test
         fun `존재하지 않는 쿠폰은 예외를 발생시킨다`() {
             // Given
+            setupLockMock()
             val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
 
             every { userRepository.findById(1L) } returns user
@@ -103,6 +119,7 @@ class CouponUseCaseTest {
         @Test
         fun `쿠폰이 모두 소진되면 예외를 발생시킨다`() {
             // Given
+            setupLockMock()
             val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
             val coupon = Coupon(
                 id = 1L, code = "COUPON-001", name = "소진된 쿠폰",
@@ -125,6 +142,7 @@ class CouponUseCaseTest {
         @Test
         fun `만료된 쿠폰은 발급할 수 없다`() {
             // Given
+            setupLockMock()
             val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
             val coupon = Coupon(
                 id = 1L, code = "COUPON-001", name = "만료된 쿠폰",
@@ -147,6 +165,7 @@ class CouponUseCaseTest {
         @Test
         fun `아직 시작하지 않은 쿠폰은 발급할 수 없다`() {
             // Given
+            setupLockMock()
             val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
             val coupon = Coupon(
                 id = 1L, code = "COUPON-001", name = "미시작 쿠폰",

@@ -5,34 +5,58 @@ import io.hhplus.ecommerce.domain.UserCoupon
 import io.hhplus.ecommerce.exception.*
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
+import org.redisson.api.RedissonClient
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * 쿠폰 유스케이스
+ *
+ * Redisson 분산 락을 이용하여 멀티 서버 환경에서도 안전한 동시성 제어를 구현합니다.
+ * - 쿠폰 ID별로 분산 락을 적용하여 race condition 방지
+ * - 3초 대기 후 락 획득 실패 시 예외 발생
+ * - 멀티 서버 환경에서도 정확한 선착순 처리 보장
  */
 @Service
 class CouponUseCase(
     private val couponRepository: CouponRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val redissonClient: RedissonClient
 ) {
-    // 쿠폰 ID별 락 관리를 위한 맵
-    private val couponLocks = ConcurrentHashMap<Long, Any>()
+    companion object {
+        private const val LOCK_WAIT_TIME = 3L  // 락 획득 대기 시간 (초)
+        private const val LOCK_HOLD_TIME = 10L // 락 보유 시간 (초)
+    }
 
     /**
-     * 선착순 쿠폰 발급 (동시성 제어 적용)
+     * 선착순 쿠폰 발급 (분산 락 적용)
      *
-     * Race Condition 방지를 위해 쿠폰 ID별로 synchronized 블록을 사용합니다.
+     * Redisson 분산 락을 이용하여 멀티 서버 환경에서도 안전한 race condition 방지:
      * - check-then-act 패턴의 원자성을 보장
      * - 쿠폰 ID별로 락을 분리하여 다른 쿠폰 발급에는 영향 없음
+     * - 3초 대기 후 락 획득 실패 시 CouponException 발생
+     *
+     * @param couponId 쿠폰 ID
+     * @param userId 사용자 ID
+     * @return 쿠폰 발급 결과
+     * @throws UserException.UserNotFound 사용자를 찾을 수 없음
+     * @throws CouponException.AlreadyIssuedCoupon 이미 발급받은 쿠폰
+     * @throws CouponException.CouponNotFound 쿠폰을 찾을 수 없음
+     * @throws CouponException.CouponExhausted 쿠폰 재고 부족
+     * @throws InterruptedException 락 획득 실패
      */
     fun issueCoupon(couponId: Long, userId: Long): CouponIssueResult {
-        // 쿠폰 ID별 락 객체 획득 (동일한 쿠폰에 대해서만 동기화)
-        val lockObject = couponLocks.computeIfAbsent(couponId) { Any() }
+        val lockKey = "coupon:lock:$couponId"
+        val lock = redissonClient.getLock(lockKey)
 
-        // 동시성 제어: 쿠폰 발급 로직을 원자적으로 처리
-        synchronized(lockObject) {
+        return try {
+            // 분산 락 획득 시도 (3초 대기, 10초 보유)
+            val lockAcquired = lock.tryLock(LOCK_WAIT_TIME, LOCK_HOLD_TIME, TimeUnit.SECONDS)
+            if (!lockAcquired) {
+                throw CouponException.CouponExhausted()
+            }
+
             // 사용자 확인
             val user = userRepository.findById(userId)
                 ?: throw UserException.UserNotFound(userId.toString())
@@ -68,13 +92,18 @@ class CouponUseCase(
             couponRepository.saveUserCoupon(userCoupon)
 
             // 응답 반환
-            return CouponIssueResult(
+            CouponIssueResult(
                 userCouponId = couponId,
                 couponName = userCoupon.couponName,
                 discountRate = userCoupon.discountRate,
                 expiresAt = userCoupon.expiresAt,
                 remainingQuantity = remainingQuantity
             )
+        } finally {
+            // 락 해제
+            if (lock.isHeldByCurrentThread) {
+                lock.unlock()
+            }
         }
     }
 
