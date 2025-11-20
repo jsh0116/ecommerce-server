@@ -16,6 +16,8 @@ import org.springframework.test.web.servlet.post
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.context.annotation.Import
+import io.hhplus.ecommerce.config.TestRedissonConfig
 
 /**
  * 테스트용 컨트롤러
@@ -45,6 +47,7 @@ class TestExceptionController {
 @Tag("integration")
 @DisplayName("ApiControllerAdvice 테스트")
 @org.springframework.test.context.ActiveProfiles("test")
+@Import(TestRedissonConfig::class)
 class ApiControllerAdviceTest {
 
     @Autowired

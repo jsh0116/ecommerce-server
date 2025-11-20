@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.CouponLockService
 import io.hhplus.ecommerce.domain.Coupon
 import io.hhplus.ecommerce.domain.CouponType
 import io.hhplus.ecommerce.domain.User
@@ -18,8 +19,6 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
-import org.redisson.api.RLock
-import org.redisson.api.RedissonClient
 import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
@@ -28,18 +27,15 @@ class CouponUseCaseTest {
 
     private val couponRepository = mockk<CouponRepository>()
     private val userRepository = mockk<UserRepository>()
-    private val redissonClient = mockk<RedissonClient>()
-    private val lock = mockk<RLock>()
-    private val useCase = CouponUseCase(couponRepository, userRepository, redissonClient)
+    private val couponLockService = mockk<CouponLockService>()
+    private val useCase = CouponUseCase(couponRepository, userRepository, couponLockService)
 
     @Nested
     @DisplayName("쿠폰 발급 테스트")
     inner class IssueCouponTest {
         private fun setupLockMock() {
-            every { redissonClient.getLock(any()) } returns lock
-            every { lock.tryLock(3L, 10L, TimeUnit.SECONDS) } returns true
-            every { lock.isHeldByCurrentThread } returns true
-            every { lock.unlock() } just runs
+            every { couponLockService.tryLock(any(), 3L, 10L, TimeUnit.SECONDS) } returns true
+            every { couponLockService.unlock(any()) } just runs
         }
 
         @Test

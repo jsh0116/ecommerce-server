@@ -44,6 +44,7 @@ dependencies {
     testImplementation(libs.assertj)
     testImplementation(libs.fixture.monkey.starter.kotlin)
     testImplementation(libs.bundles.testcontainers.mysql)
+    testImplementation(libs.test.containers.redis)
 }
 
 // about source and compilation
