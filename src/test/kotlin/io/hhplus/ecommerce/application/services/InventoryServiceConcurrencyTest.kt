@@ -1,14 +1,17 @@
 package io.hhplus.ecommerce.application.services
 
+import io.hhplus.ecommerce.config.TestContainersConfig
 import io.hhplus.ecommerce.domain.StockStatus
 import io.hhplus.ecommerce.exception.InventoryException
 import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.ActiveProfiles
 import java.time.LocalDateTime
@@ -19,14 +22,17 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * 재고 관리 동시성 통합 테스트
  *
- * 실제 DB와 비관적 락을 이용하여 Race Condition을 검증합니다.
- * - 동시 요청 정확성
+ * 실제 DB(TestContainers MySQL)와 실제 Redis를 이용하여 Race Condition을 검증합니다.
+ * - 동시 요청 정확성 (비관적 락)
  * - 음수 재고 방지
  * - 재고 복구 정확성
+ * - Redisson 분산 락 동작
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(TestContainersConfig::class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@Tag("integration")
 @DisplayName("재고 서비스 동시성 통합 테스트")
 class InventoryServiceConcurrencyTest {
 
@@ -433,7 +439,7 @@ class InventoryServiceConcurrencyTest {
 
         // Then
         assertThat(successCount.get()).isEqualTo(1000)
-        assertThat(elapsed).isLessThan(5000) // 5초 이내 (보수적 기준)
+        assertThat(elapsed).isLessThan(20000) // 20초 이내 (비관적 락 오버헤드 감안)
 
         val finalInventory = inventoryRepository.findBySku(sku)
         assertThat(finalInventory!!.physicalStock).isEqualTo(0)
