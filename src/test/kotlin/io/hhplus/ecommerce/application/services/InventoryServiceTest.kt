@@ -1,6 +1,7 @@
 package io.hhplus.ecommerce.application.services
 
 import io.hhplus.ecommerce.domain.StockStatus
+import io.hhplus.ecommerce.exception.InventoryException
 import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
 import io.mockk.every
@@ -58,8 +59,7 @@ class InventoryServiceTest {
             // When/Then
             assertThatThrownBy {
                 service.reserveStock("INVALID-SKU", 10)
-            }.isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("상품을 찾을 수 없습니다")
+            }.isInstanceOf(InventoryException.InventoryNotFound::class.java)
         }
 
         @Test
@@ -79,8 +79,7 @@ class InventoryServiceTest {
             // When/Then
             assertThatThrownBy {
                 service.reserveStock("SKU-001", 20)
-            }.isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("재고 부족")
+            }.isInstanceOf(InventoryException.InsufficientStock::class.java)
         }
     }
 
@@ -119,8 +118,7 @@ class InventoryServiceTest {
             // When/Then
             assertThatThrownBy {
                 service.confirmReservation("INVALID-SKU", 10)
-            }.isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("상품을 찾을 수 없습니다")
+            }.isInstanceOf(InventoryException.InventoryNotFound::class.java)
         }
     }
 
@@ -159,8 +157,7 @@ class InventoryServiceTest {
             // When/Then
             assertThatThrownBy {
                 service.cancelReservation("INVALID-SKU", 10)
-            }.isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("상품을 찾을 수 없습니다")
+            }.isInstanceOf(InventoryException.InventoryNotFound::class.java)
         }
     }
 
@@ -199,8 +196,7 @@ class InventoryServiceTest {
             // When/Then
             assertThatThrownBy {
                 service.restoreStock("INVALID-SKU", 10)
-            }.isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("상품을 찾을 수 없습니다")
+            }.isInstanceOf(InventoryException.InventoryNotFound::class.java)
         }
     }
 

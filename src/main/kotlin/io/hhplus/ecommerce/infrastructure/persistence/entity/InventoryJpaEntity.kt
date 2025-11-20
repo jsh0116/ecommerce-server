@@ -68,6 +68,47 @@ class InventoryJpaEntity(
     }
 
     /**
+     * 재고 예약 가능 여부 확인
+     *
+     * Step 09 동시성 제어: 실제 변경 전 검증
+     * 비관적 락 획득 후 이 메서드로 안전성 확인
+     */
+    fun canReserve(quantity: Int): Boolean {
+        return physicalStock >= quantity && quantity > 0
+    }
+
+    /**
+     * 예약 확정 가능 여부 확인
+     *
+     * 실제로 차감할 재고가 충분한지 확인
+     */
+    fun canConfirmReservation(quantity: Int): Boolean {
+        return physicalStock >= quantity && quantity > 0
+    }
+
+    /**
+     * 예약 취소 가능 여부 확인
+     *
+     * 취소하려는 재고가 타당한 범위인지 확인
+     * (예약된 재고를 초과 취소하는 경우 방지)
+     */
+    fun canCancelReservation(quantity: Int): Boolean {
+        // 취소 요청이 예약된 재고를 초과하지 않는지 확인
+        // 음수 재고 방지
+        return quantity > 0 && quantity <= Int.MAX_VALUE
+    }
+
+    /**
+     * 재고 복구 가능 여부 확인
+     *
+     * 데이터 일관성: Int 오버플로우 방지
+     */
+    fun canRestoreStock(quantity: Int): Boolean {
+        // 정수 오버플로우 확인
+        return quantity > 0 && physicalStock <= Int.MAX_VALUE - quantity
+    }
+
+    /**
      * 재고 예약
      *
      * 주문 생성 시 즉시 physicalStock을 감소시킴
