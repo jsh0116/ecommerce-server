@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.events.OrderPaidEvent
 import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.domain.OrderItem
 import io.hhplus.ecommerce.domain.UserCoupon
@@ -8,14 +9,18 @@ import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
-import io.hhplus.ecommerce.application.services.DataTransmissionService
 import io.hhplus.ecommerce.exception.*
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.util.UUID
 
 /**
  * 주문 유스케이스
+ *
+ * 외부 데이터 전송은 OrderPaidEvent 발행을 통해 비동기로 처리됩니다.
+ * 이를 통해 DB 트랜잭션 완료 후 별도의 스레드에서 외부 시스템과의 통신이 이루어지며,
+ * DB 트랜잭션 중 네트워크 대기 시간이 발생하지 않습니다.
  */
 @Service
 class OrderUseCase(
@@ -24,8 +29,8 @@ class OrderUseCase(
     private val userRepository: UserRepository,
     private val couponRepository: CouponRepository,
     private val inventoryRepository: InventoryRepository,
-    private val dataTransmissionService: DataTransmissionService?,
-    private val productUseCase: ProductUseCase
+    private val productUseCase: ProductUseCase,
+    private val eventPublisher: ApplicationEventPublisher
 ) {
     /**
      * 주문 생성
@@ -215,22 +220,10 @@ class OrderUseCase(
         order.complete()
         orderRepository.save(order)
 
-        // 외부 데이터 전송 (실패해도 주문은 완료)
-        try {
-            dataTransmissionService?.send(
-                DataPayload(
-                    orderId = order.id,
-                    userId = userId,
-                    items = order.items,
-                    totalAmount = order.totalAmount,
-                    discountAmount = order.discountAmount,
-                    paidAt = order.paidAt
-                )
-            )
-        } catch (e: Exception) {
-            System.err.println("데이터 전송 실패: ${e.message}")
-            dataTransmissionService?.addToRetryQueue(order)
-        }
+        // 주문 결제 완료 이벤트 발행 (비동기 처리)
+        // OrderPaidEventListener에서 비동기로 외부 데이터 전송을 처리합니다.
+        // DB 트랜잭션 완료 후 별도의 스레드에서 실행되므로 트랜잭션 내 네트워크 대기가 없습니다.
+        eventPublisher.publishEvent(OrderPaidEvent.from(order))
 
         // 결제 결과 반환
         return PaymentResult(

@@ -3,6 +3,7 @@ package io.hhplus.ecommerce.infrastructure.persistence
 import io.hhplus.ecommerce.application.services.InventoryService
 import io.hhplus.ecommerce.application.services.PaymentService
 import io.hhplus.ecommerce.application.services.ReservationService
+import io.hhplus.ecommerce.config.TestRedissonConfig
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentMethodJpa
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationStatusJpa
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.ActiveProfiles
 import java.time.LocalDateTime
@@ -35,6 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
+@Import(TestRedissonConfig::class)
 class DatabaseIntegrationTest {
 
     @Autowired

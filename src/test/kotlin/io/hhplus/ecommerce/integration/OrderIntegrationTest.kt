@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.integration
 
+import io.hhplus.ecommerce.config.TestRedissonConfig
 import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderJpaStatus
 import io.hhplus.ecommerce.infrastructure.persistence.repository.OrderJpaRepository
@@ -9,7 +10,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
+import org.springframework.test.context.ActiveProfiles
 import java.time.LocalDateTime
 
 /**
@@ -19,6 +22,8 @@ import java.time.LocalDateTime
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
 @DisplayName("Order 통합 테스트")
+@ActiveProfiles("test")
+@Import(TestRedissonConfig::class)
 class OrderIntegrationTest : IntegrationTestBase() {
 
     @Autowired
