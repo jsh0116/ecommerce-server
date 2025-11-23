@@ -1,6 +1,7 @@
 package io.hhplus.ecommerce.application.services
 
 import io.hhplus.ecommerce.domain.StockStatus
+import io.hhplus.ecommerce.exception.InventoryException
 import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationStatusJpa
@@ -82,8 +83,7 @@ class ReservationServiceTest {
             // When/Then
             assertThatThrownBy {
                 service.createReservation(1L, "SKU-001", 20)
-            }.isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("재고 부족")
+            }.isInstanceOf(InventoryException.InsufficientStock::class.java)
         }
     }
 
