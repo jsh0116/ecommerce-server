@@ -13,11 +13,6 @@ data class ErrorResponse(val code: String, val message: String)
 
 @RestControllerAdvice
 class ApiControllerAdvice : ResponseEntityExceptionHandler() {
-    private val logger: Logger = LoggerFactory.getLogger(javaClass)
-
-    /**
-     * 커스텀 예외 처리 - 예외 코드와 상태 코드를 함께 반환
-     */
     @ExceptionHandler(EcommerceException::class)
     fun handleEcommerceException(e: EcommerceException): ResponseEntity<ErrorResponse> {
         logger.warn("EcommerceException: code=${e.errorCode}, message=${e.message}")
@@ -33,9 +28,6 @@ class ApiControllerAdvice : ResponseEntityExceptionHandler() {
         )
     }
 
-    /**
-     * 일반 예외 처리
-     */
     @ExceptionHandler(Exception::class)
     fun handleException(e: Exception): ResponseEntity<ErrorResponse> {
         logger.error("Unexpected exception occurred", e)
@@ -43,5 +35,9 @@ class ApiControllerAdvice : ResponseEntityExceptionHandler() {
             ErrorResponse(code = "INTERNAL_SERVER_ERROR", message = "서버 오류가 발생했습니다"),
             HttpStatus.INTERNAL_SERVER_ERROR,
         )
+    }
+
+    companion object {
+        private val logger: Logger = LoggerFactory.getLogger(ApiControllerAdvice::class.java)
     }
 }
