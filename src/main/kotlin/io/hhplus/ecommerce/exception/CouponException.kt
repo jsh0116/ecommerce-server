@@ -33,4 +33,9 @@ object CouponException {
         errorCode = "CANNOT_USE_COUPON",
         message = "사용할 수 없는 쿠폰입니다"
     )
+
+    class CouponLockTimeout(message: String = "쿠폰 발급 대기 시간 초과") : BusinessRuleViolationException(
+        errorCode = "COUPON_LOCK_TIMEOUT",
+        message = message
+    )
 }

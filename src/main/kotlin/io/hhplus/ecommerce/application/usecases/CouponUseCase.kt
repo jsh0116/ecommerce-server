@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.CouponLockService
 import io.hhplus.ecommerce.domain.CouponValidationResult
 import io.hhplus.ecommerce.domain.UserCoupon
 import io.hhplus.ecommerce.exception.*
@@ -7,19 +8,29 @@ import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 @Service
 class CouponUseCase(
     private val couponRepository: CouponRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val couponLockService: CouponLockService
 ) {
-    private val couponLocks = ConcurrentHashMap<Long, Any>()
 
     fun issueCoupon(couponId: Long, userId: Long): CouponIssueResult {
-        val lockObject = couponLocks.computeIfAbsent(couponId) { Any() }
 
-        synchronized(lockObject) {
+        val lockAcquired = couponLockService.tryLock(
+            couponId = couponId,
+            waitTime = 3L,
+            holdTime = 10L,
+            unit = TimeUnit.SECONDS
+        )
+
+        if (!lockAcquired) {
+            throw CouponException.CouponLockTimeout("쿠폰 발급 대기 시간 초과")
+        }
+
+        try {
             val user = userRepository.findById(userId)
                 ?: throw UserException.UserNotFound(userId.toString())
 
@@ -54,6 +65,9 @@ class CouponUseCase(
                 expiresAt = userCoupon.expiresAt,
                 remainingQuantity = remainingQuantity
             )
+        } finally {
+            // ✅ 명시적 락 해제
+            couponLockService.unlock(couponId)
         }
     }
 
