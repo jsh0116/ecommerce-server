@@ -2,13 +2,16 @@ package io.hhplus.ecommerce.application.services
 
 import io.hhplus.ecommerce.domain.StockStatus
 import io.hhplus.ecommerce.exception.InventoryException
+import io.hhplus.ecommerce.infrastructure.cache.CacheService
 import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationStatusJpa
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
 import io.hhplus.ecommerce.infrastructure.persistence.repository.ReservationJpaRepository
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.runs
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -22,7 +25,8 @@ class ReservationServiceTest {
 
     private val reservationRepository = mockk<ReservationJpaRepository>()
     private val inventoryRepository = mockk<InventoryJpaRepository>()
-    private val inventoryService = InventoryService(inventoryRepository)
+    private val cacheService = mockk<CacheService>()
+    private val inventoryService = InventoryService(inventoryRepository, cacheService)
     private val service = ReservationService(reservationRepository, inventoryService)
 
     @Nested
@@ -50,6 +54,7 @@ class ReservationServiceTest {
 
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory
             every { inventoryRepository.save(any()) } returns inventory
+            every { cacheService.delete(any()) } just runs
             every { reservationRepository.save(any()) } returns reservation
 
             // When
@@ -63,6 +68,7 @@ class ReservationServiceTest {
             assertThat(result.status).isEqualTo(ReservationStatusJpa.ACTIVE)
             verify { inventoryRepository.findBySkuForUpdate("SKU-001") }
             verify { inventoryRepository.save(any()) }
+            verify { cacheService.delete("inventory:SKU-001") }
             verify { reservationRepository.save(any()) }
         }
 
@@ -121,6 +127,7 @@ class ReservationServiceTest {
             every { reservationRepository.findByOrderId(1L) } returns reservation
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory
             every { inventoryRepository.save(any()) } returns inventory
+            every { cacheService.delete(any()) } just runs
             every { reservationRepository.save(any()) } returns confirmedReservation
 
             // When
@@ -131,6 +138,7 @@ class ReservationServiceTest {
             assertThat(result.status).isEqualTo(ReservationStatusJpa.CONFIRMED)
             verify { reservationRepository.findByOrderId(1L) }
             verify { inventoryRepository.findBySkuForUpdate("SKU-001") }
+            verify { cacheService.delete("inventory:SKU-001") }
             verify { reservationRepository.save(any()) }
         }
 
@@ -181,6 +189,7 @@ class ReservationServiceTest {
             every { reservationRepository.findByOrderId(1L) } returns reservation
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory
             every { inventoryRepository.save(any()) } returns inventory
+            every { cacheService.delete(any()) } just runs
             every { reservationRepository.save(any()) } returns cancelledReservation
 
             // When
@@ -191,6 +200,7 @@ class ReservationServiceTest {
             assertThat(result.status).isEqualTo(ReservationStatusJpa.CANCELLED)
             verify { reservationRepository.findByOrderId(1L) }
             verify { inventoryRepository.findBySkuForUpdate("SKU-001") }
+            verify { cacheService.delete("inventory:SKU-001") }
             verify { reservationRepository.save(any()) }
         }
 
@@ -241,6 +251,7 @@ class ReservationServiceTest {
             every { reservationRepository.findExpiredReservations() } returns listOf(expiredReservation)
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory
             every { inventoryRepository.save(any()) } returns inventory
+            every { cacheService.delete(any()) } just runs
             every { reservationRepository.save(any()) } returns expiredReservationResult
 
             // When
@@ -250,6 +261,7 @@ class ReservationServiceTest {
             assertThat(result).isEqualTo(1)
             verify { reservationRepository.findExpiredReservations() }
             verify { inventoryRepository.findBySkuForUpdate("SKU-001") }
+            verify { cacheService.delete("inventory:SKU-001") }
             verify { reservationRepository.save(any()) }
         }
 
@@ -305,6 +317,7 @@ class ReservationServiceTest {
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory1
             every { inventoryRepository.findBySkuForUpdate("SKU-002") } returns inventory2
             every { inventoryRepository.save(any()) } returns inventory1
+            every { cacheService.delete(any()) } just runs
             every { reservationRepository.save(any()) } returns reservation1
 
             // When
