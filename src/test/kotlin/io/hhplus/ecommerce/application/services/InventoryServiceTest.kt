@@ -2,6 +2,7 @@ package io.hhplus.ecommerce.application.services
 
 import io.hhplus.ecommerce.domain.StockStatus
 import io.hhplus.ecommerce.exception.InventoryException
+import io.hhplus.ecommerce.infrastructure.cache.CacheService
 import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
 import io.mockk.every
@@ -18,7 +19,8 @@ import java.time.LocalDateTime
 class InventoryServiceTest {
 
     private val inventoryRepository = mockk<InventoryJpaRepository>()
-    private val service = InventoryService(inventoryRepository)
+    private val cacheService = mockk<CacheService>()
+    private val service = InventoryService(inventoryRepository, cacheService)
 
     @Nested
     @DisplayName("재고 예약 테스트")
@@ -39,6 +41,7 @@ class InventoryServiceTest {
 
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory
             every { inventoryRepository.save(any()) } returns inventory
+            every { cacheService.delete(any()) } just runs
 
             // When
             val result = service.reserveStock("SKU-001", 20)
@@ -47,6 +50,7 @@ class InventoryServiceTest {
             assertThat(result).isNotNull
             verify { inventoryRepository.findBySkuForUpdate("SKU-001") }
             verify { inventoryRepository.save(any()) }
+            verify { cacheService.delete("inventory:SKU-001") }
         }
 
         @Test
@@ -98,6 +102,7 @@ class InventoryServiceTest {
 
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory
             every { inventoryRepository.save(any()) } returns inventory
+            every { cacheService.delete(any()) } just runs
 
             // When
             val result = service.confirmReservation("SKU-001", 20)
@@ -106,6 +111,7 @@ class InventoryServiceTest {
             assertThat(result).isNotNull
             verify { inventoryRepository.findBySkuForUpdate("SKU-001") }
             verify { inventoryRepository.save(any()) }
+            verify { cacheService.delete("inventory:SKU-001") }
         }
 
         @Test
@@ -137,6 +143,7 @@ class InventoryServiceTest {
 
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory
             every { inventoryRepository.save(any()) } returns inventory
+            every { cacheService.delete(any()) } just runs
 
             // When
             val result = service.cancelReservation("SKU-001", 20)
@@ -145,6 +152,7 @@ class InventoryServiceTest {
             assertThat(result).isNotNull
             verify { inventoryRepository.findBySkuForUpdate("SKU-001") }
             verify { inventoryRepository.save(any()) }
+            verify { cacheService.delete("inventory:SKU-001") }
         }
 
         @Test
@@ -176,6 +184,7 @@ class InventoryServiceTest {
 
             every { inventoryRepository.findBySkuForUpdate("SKU-001") } returns inventory
             every { inventoryRepository.save(any()) } returns inventory
+            every { cacheService.delete(any()) } just runs
 
             // When
             val result = service.restoreStock("SKU-001", 20)
@@ -184,6 +193,7 @@ class InventoryServiceTest {
             assertThat(result).isNotNull
             verify { inventoryRepository.findBySkuForUpdate("SKU-001") }
             verify { inventoryRepository.save(any()) }
+            verify { cacheService.delete("inventory:SKU-001") }
         }
 
         @Test
@@ -213,7 +223,9 @@ class InventoryServiceTest {
                 status = StockStatus.IN_STOCK
             )
 
+            every { cacheService.get(any()) } returns null  // Cache miss
             every { inventoryRepository.findBySku("SKU-001") } returns inventory
+            every { cacheService.set(any(), any(), any()) } just runs  // Cache set
 
             // When
             val result = service.getInventory("SKU-001")
@@ -221,12 +233,14 @@ class InventoryServiceTest {
             // Then
             assertThat(result).isNotNull
             assertThat(result?.sku).isEqualTo("SKU-001")
+            verify { cacheService.get("inventory:SKU-001") }
             verify { inventoryRepository.findBySku("SKU-001") }
         }
 
         @Test
         fun `존재하지 않는 SKU는 null을 반환한다`() {
             // Given
+            every { cacheService.get(any()) } returns null  // Cache miss
             every { inventoryRepository.findBySku("INVALID-SKU") } returns null
 
             // When
