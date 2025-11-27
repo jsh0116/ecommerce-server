@@ -1,12 +1,13 @@
 package io.hhplus.ecommerce.application.usecases
 
-import io.hhplus.ecommerce.application.services.CouponLockService
 import io.hhplus.ecommerce.domain.CouponValidationResult
 import io.hhplus.ecommerce.domain.UserCoupon
 import io.hhplus.ecommerce.exception.*
+import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import org.springframework.stereotype.Service
+import org.slf4j.LoggerFactory
 import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
@@ -14,14 +15,19 @@ import java.util.concurrent.TimeUnit
 class CouponUseCase(
     private val couponRepository: CouponRepository,
     private val userRepository: UserRepository,
-    private val couponLockService: CouponLockService
+    private val distributedLockService: DistributedLockService
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
+    companion object {
+        private const val COUPON_LOCK_PREFIX = "coupon:lock:"
+    }
 
     fun issueCoupon(couponId: Long, userId: Long): CouponIssueResult {
-
-        val lockAcquired = couponLockService.tryLock(
-            couponId = couponId,
-            waitTime = 3L,
+        // First-Come-First-Served: 쿠폰별 세밀한 잠금
+        val lockKey = "$COUPON_LOCK_PREFIX$couponId"
+        val lockAcquired = distributedLockService.tryLock(
+            key = lockKey,
+            waitTime = 3L,  // 빠른 응답
             holdTime = 10L,
             unit = TimeUnit.SECONDS
         )
@@ -66,8 +72,8 @@ class CouponUseCase(
                 remainingQuantity = remainingQuantity
             )
         } finally {
-            // ✅ 명시적 락 해제
-            couponLockService.unlock(couponId)
+            // 명시적 락 해제
+            distributedLockService.unlock(lockKey)
         }
     }
 

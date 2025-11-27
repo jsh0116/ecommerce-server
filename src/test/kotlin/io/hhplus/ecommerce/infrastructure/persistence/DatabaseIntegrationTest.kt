@@ -11,6 +11,7 @@ import io.hhplus.ecommerce.infrastructure.persistence.repository.PaymentJpaRepos
 import io.hhplus.ecommerce.infrastructure.persistence.repository.ReservationJpaRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -20,6 +21,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.ActiveProfiles
+import java.time.Duration
 import java.time.LocalDateTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -271,7 +273,14 @@ class DatabaseIntegrationTest {
             }
         }
 
-        latch.await(10, TimeUnit.SECONDS)
+        // Awaitility로 모든 스레드 완료 대기 (CI 환경 안정성)
+        await("결제 동시 요청이 완료됨")
+            .atMost(Duration.ofSeconds(15))
+            .pollInterval(Duration.ofMillis(100))
+            .untilAsserted {
+                assertThat(paymentIds).hasSize(threadCount)
+            }
+
         executor.shutdown()
 
         // Then: 모든 요청이 동일한 결제 ID를 반환해야 함

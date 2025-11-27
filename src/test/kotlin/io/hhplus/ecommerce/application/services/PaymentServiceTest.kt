@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.services
 
+import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentMethodJpa
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentStatusJpa
@@ -14,12 +15,14 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 @DisplayName("PaymentService 테스트")
 class PaymentServiceTest {
 
     private val paymentRepository = mockk<PaymentJpaRepository>()
-    private val service = PaymentService(paymentRepository)
+    private val distributedLockService = mockk<DistributedLockService>()
+    private val service = PaymentService(paymentRepository, distributedLockService)
 
     @Nested
     @DisplayName("결제 처리 테스트")
@@ -39,8 +42,10 @@ class PaymentServiceTest {
                 updatedAt = LocalDateTime.now()
             )
 
+            every { distributedLockService.tryLock(key = any(), waitTime = any(), holdTime = any(), unit = any()) } returns true
             every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns null
             every { paymentRepository.save(any()) } returns payment
+            every { distributedLockService.unlock(any()) } returns Unit
 
             // When
             val result = service.processPayment(1L, 50000L, PaymentMethodJpa.CARD, idempotencyKey)
@@ -67,7 +72,9 @@ class PaymentServiceTest {
                 status = PaymentStatusJpa.PENDING
             )
 
+            every { distributedLockService.tryLock(key = any(), waitTime = any(), holdTime = any(), unit = any()) } returns true
             every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns existingPayment
+            every { distributedLockService.unlock(any()) } returns Unit
 
             // When
             val result = service.processPayment(1L, 50000L, PaymentMethodJpa.CARD, idempotencyKey)
@@ -90,8 +97,10 @@ class PaymentServiceTest {
                 status = PaymentStatusJpa.PENDING
             )
 
+            every { distributedLockService.tryLock(key = any(), waitTime = any(), holdTime = any(), unit = any()) } returns true
             every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns null
             every { paymentRepository.save(any()) } returns payment
+            every { distributedLockService.unlock(any()) } returns Unit
 
             // When
             val result = service.processPayment(2L, 100000L, PaymentMethodJpa.BANK_TRANSFER, idempotencyKey)

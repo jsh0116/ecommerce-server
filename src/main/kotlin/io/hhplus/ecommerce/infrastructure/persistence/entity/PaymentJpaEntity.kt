@@ -28,7 +28,7 @@ enum class PaymentStatusJpa {
 @Table(
     name = "payments",
     indexes = [
-        Index(name = "idx_payments_order_id", columnList = "order_id", unique = true),
+        Index(name = "idx_payments_order_id", columnList = "order_id"),  // unique 제거: 한 주문에 여러 결제 시도 가능
         Index(name = "idx_payments_idempotency_key", columnList = "idempotency_key", unique = true),
         Index(name = "idx_payments_status", columnList = "status"),
         Index(name = "idx_payments_approved_at", columnList = "approved_at")

@@ -1,5 +1,7 @@
 package io.hhplus.ecommerce
 
+import io.hhplus.ecommerce.config.TestContainersConfig
+import io.hhplus.ecommerce.config.TestRedissonConfig
 import io.hhplus.ecommerce.exception.BusinessRuleViolationException
 import io.hhplus.ecommerce.exception.OrderException
 import org.assertj.core.api.Assertions.assertThat
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.web.servlet.MockMvc
@@ -16,8 +19,6 @@ import org.springframework.test.web.servlet.post
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.context.annotation.Import
-import io.hhplus.ecommerce.config.TestRedissonConfig
 
 /**
  * 테스트용 컨트롤러
@@ -47,7 +48,7 @@ class TestExceptionController {
 @Tag("integration")
 @DisplayName("ApiControllerAdvice 테스트")
 @org.springframework.test.context.ActiveProfiles("test")
-@Import(TestRedissonConfig::class)
+@Import(TestContainersConfig::class, TestRedissonConfig::class)
 class ApiControllerAdviceTest {
 
     @Autowired
