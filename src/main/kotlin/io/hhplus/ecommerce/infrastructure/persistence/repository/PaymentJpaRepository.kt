@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository
 interface PaymentJpaRepository : JpaRepository<PaymentJpaEntity, Long> {
 
     /**
+     *
      * 주문 ID로 결제 조회
      */
     fun findByOrderId(orderId: Long): PaymentJpaEntity?

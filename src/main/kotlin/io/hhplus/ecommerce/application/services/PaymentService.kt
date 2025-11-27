@@ -6,9 +6,9 @@ import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentMethodJpa
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentStatusJpa
 import io.hhplus.ecommerce.infrastructure.persistence.repository.PaymentJpaRepository
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.annotation.Propagation
 import java.util.concurrent.TimeUnit
 import org.slf4j.LoggerFactory
 
@@ -51,55 +51,141 @@ class PaymentService(
         method: PaymentMethodJpa,
         idempotencyKey: String
     ): PaymentJpaEntity {
-        // 1단계: 분산 락 획득
+        val threadId = Thread.currentThread().id
+        val threadName = Thread.currentThread().name
+
+        // 1단계: 분산 락 획득 (멱등성 키별로 동시 요청 직렬화)
         val lockKey = "$PAYMENT_LOCK_PREFIX$idempotencyKey"
+        logger.info("[{}][{}] 분산 락 획득 시도 시작", threadName, threadId)
+
         val lockAcquired = distributedLockService.tryLock(
             key = lockKey,
-            waitTime = 10L,  // 대기 시간 (동시 요청 대응)
-            holdTime = 10L,
+            waitTime = 60L,  // 충분한 대기 시간 (동시 요청 대응)
+            holdTime = 30L,  // 충분한 보유 시간
             unit = TimeUnit.SECONDS
         )
 
+        logger.info("[{}][{}] 분산 락 획득 결과: {}", threadName, threadId, lockAcquired)
+
         if (!lockAcquired) {
+            logger.error("[{}][{}] 분산 락 획득 실패 - 타임아웃", threadName, threadId)
             throw PaymentException.PaymentLockTimeout("결제 처리 대기 시간 초과")
         }
 
         try {
-            // 2단계: 기존 요청 확인 (멱등성)
-            var existingPayment = paymentRepository.findByIdempotencyKey(idempotencyKey)
+            // 2단계: 기존 요청 확인 (멱등성) - 별도 transaction에서 조회하여 committed 데이터 확인
+            logger.info("[{}][{}] 기존 결제 조회 시작", threadName, threadId)
+            var existingPayment = queryExistingPayment(idempotencyKey)
+
             if (existingPayment != null) {
+                logger.info("[{}][{}] 기존 결제 발견 - ID: {}", threadName, threadId, existingPayment.id)
                 // 기존 결과 반환 (중복 요청 처리)
                 return existingPayment
             }
 
-            // 3단계: 새로운 결제 생성
-            val payment = PaymentJpaEntity(
+            logger.info("[{}][{}] 새로운 결제 생성 시작", threadName, threadId)
+
+            // 3단계: 새로운 결제 생성 (별도 transaction에서 수행하여 즉시 commit)
+            // 이를 통해 unlock 후 다른 스레드가 변경사항을 볼 수 있게 합니다
+            val savedPayment = createPaymentInNewTransaction(
                 orderId = orderId,
                 idempotencyKey = idempotencyKey,
                 method = method,
                 amount = amount
             )
 
-            try {
-                val savedPayment = paymentRepository.save(payment)
+            logger.info("[{}][{}] 새로운 결제 생성 완료 - ID: {}", threadName, threadId, savedPayment.id)
 
-                // 동시 요청 시 다른 스레드에서 방금 생성된 결제를 조회할 수 있도록
-                // JPA Persistence Context의 변경사항을 즉시 데이터베이스에 반영합니다
-                paymentRepository.flush()
-
-                return savedPayment
-            } catch (e: DataIntegrityViolationException) {
-                // 고유 제약조건 위반 (동시성 요청으로 인한 중복)
-                // 트랜잭션 롤백 후 기존 결제 조회
-                logger.warn("중복 결제 감지, 기존 결제 조회 시도: {}", idempotencyKey)
-
-                // DataIntegrityViolationException 발생 후에는 현재 트랜잭션이 rollback-only 상태
-                // 따라서 새로운 쿼리 실행도 실패할 수 있으므로, 예외를 다시 던짐
-                // (분산 락이 이미 확보되었으므로 재시도는 불필요)
-                throw e
-            }
+            return savedPayment
+        } catch (e: Exception) {
+            logger.error("[{}][{}] processPayment 실행 중 예외 발생", threadName, threadId, e)
+            throw e
         } finally {
+            logger.info("[{}][{}] 분산 락 해제", threadName, threadId)
             distributedLockService.unlock(lockKey)
+        }
+    }
+
+    /**
+     * 멱등성 키로 기존 결제 조회 (별도 transaction)
+     *
+     * 분산 락을 획득한 후 별도의 독립적인 transaction에서 조회합니다.
+     * 이를 통해 다른 스레드의 commit된 데이터를 확실히 볼 수 있습니다.
+     *
+     * readOnly = false로 설정: readOnly 트랜잭션은 특별한 connection을 사용할 수 있어
+     * 최신 committed 데이터를 보지 못할 수 있습니다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    private fun queryExistingPayment(idempotencyKey: String): PaymentJpaEntity? {
+        val threadId = Thread.currentThread().id
+        val threadName = Thread.currentThread().name
+        logger.debug("[{}][{}] queryExistingPayment 시작 - idempotencyKey: {}", threadName, threadId, idempotencyKey)
+
+        val result = paymentRepository.findByIdempotencyKey(idempotencyKey)
+        logger.debug("[{}][{}] queryExistingPayment 완료 - 결과: {}", threadName, threadId, result?.id ?: "null")
+
+        return result
+    }
+
+    /**
+     * 결제 생성 (별도 transaction)
+     *
+     * 새로운 transaction에서 payment를 생성하고 즉시 commit합니다.
+     * 이를 통해 lock 해제 후에도 다른 스레드가 변경사항을 볼 수 있게 합니다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    private fun createPaymentInNewTransaction(
+        orderId: Long,
+        idempotencyKey: String,
+        method: PaymentMethodJpa,
+        amount: Long
+    ): PaymentJpaEntity {
+        val threadId = Thread.currentThread().id
+        val threadName = Thread.currentThread().name
+        logger.debug("[{}][{}] createPaymentInNewTransaction 시작 - orderId: {}, idempotencyKey: {}", threadName, threadId, orderId, idempotencyKey)
+
+        // 먼저 기존 결제가 있는지 확인합니다
+        val existingPayment = paymentRepository.findByIdempotencyKey(idempotencyKey)
+        if (existingPayment != null) {
+            logger.debug("[{}][{}] 기존 결제 이미 존재 - ID: {}", threadName, threadId, existingPayment.id)
+            return existingPayment
+        }
+
+        val payment = PaymentJpaEntity(
+            orderId = orderId,
+            idempotencyKey = idempotencyKey,
+            method = method,
+            amount = amount
+        )
+
+        try {
+            val savedPayment = paymentRepository.save(payment)
+            logger.debug("[{}][{}] 결제 save 완료 - ID: {}", threadName, threadId, savedPayment.id)
+
+            // 동시 요청 시 다른 스레드에서 방금 생성된 결제를 조회할 수 있도록
+            // JPA Persistence Context의 변경사항을 즉시 데이터베이스에 반영합니다
+            paymentRepository.flush()
+            logger.debug("[{}][{}] 결제 flush 완료", threadName, threadId)
+
+            return savedPayment
+        } catch (e: org.springframework.dao.DataIntegrityViolationException) {
+            // 중복 idempotencyKey로 인한 제약 조건 위반
+            // 다른 스레드가 이미 생성한 결제가 있으므로, 그것을 반환합니다
+            logger.debug("[{}][{}] 중복 idempotencyKey 감지 - 기존 결제 조회 시도", threadName, threadId)
+
+            // 명시적으로 새로운 쿼리로 조회하여 다른 스레드가 만든 결제를 찾습니다
+            val foundPayment = paymentRepository.findByIdempotencyKey(idempotencyKey)
+            if (foundPayment != null) {
+                logger.debug("[{}][{}] 기존 결제 발견 - ID: {}", threadName, threadId, foundPayment.id)
+                return foundPayment
+            }
+
+            // 예상치 못한 에러인 경우 재발생
+            logger.error("[{}][{}] createPaymentInNewTransaction 실행 중 예외 발생", threadName, threadId, e)
+            throw e
+        } catch (e: Exception) {
+            logger.error("[{}][{}] createPaymentInNewTransaction 실행 중 예외 발생", threadName, threadId, e)
+            throw e
         }
     }
 

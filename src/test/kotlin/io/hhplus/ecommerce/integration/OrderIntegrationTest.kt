@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.integration
 
+import io.hhplus.ecommerce.config.TestContainersConfig
 import io.hhplus.ecommerce.config.TestRedissonConfig
 import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderJpaStatus
@@ -23,7 +24,7 @@ import java.time.LocalDateTime
 @Tag("integration")
 @DisplayName("Order 통합 테스트")
 @ActiveProfiles("test")
-@Import(TestRedissonConfig::class)
+@Import(TestContainersConfig::class, TestRedissonConfig::class)
 class OrderIntegrationTest : IntegrationTestBase() {
 
     @Autowired

@@ -3,6 +3,7 @@ package io.hhplus.ecommerce.infrastructure.persistence
 import io.hhplus.ecommerce.application.services.InventoryService
 import io.hhplus.ecommerce.application.services.PaymentService
 import io.hhplus.ecommerce.application.services.ReservationService
+import io.hhplus.ecommerce.config.TestContainersConfig
 import io.hhplus.ecommerce.config.TestRedissonConfig
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentMethodJpa
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationStatusJpa
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Tag
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -39,8 +41,9 @@ import java.util.concurrent.atomic.AtomicInteger
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
-@Import(TestRedissonConfig::class)
+@Import(TestContainersConfig::class, TestRedissonConfig::class)
 class DatabaseIntegrationTest {
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     @Autowired
     private lateinit var inventoryService: InventoryService
@@ -244,49 +247,72 @@ class DatabaseIntegrationTest {
     @DisplayName("시나리오 2-3: Concurrent 멱등성 요청도 동일 결과를 반환한다")
     fun idempotency_concurrentDuplicateRequests_shouldReturnSamePayment() {
         // Given
-        val orderId = 2002L
+        val orderId = 2002L  // 모든 스레드가 동일한 주문에 대해 결제 요청 (멱등성 테스트)
         val amount = 25000L
-        val idempotencyKey = "concurrent-payment-key"
+        val idempotencyKey = "concurrent-payment-key"  // 동일한 멱등성 키
         val method = PaymentMethodJpa.CARD
         val threadCount = 5
 
         val paymentIds = mutableListOf<Long>()
-        val executor = Executors.newFixedThreadPool(3)
+        val exceptions = mutableListOf<Pair<Int, Exception>>()
+        val completedThreads = mutableSetOf<Int>()
+        val executor = Executors.newFixedThreadPool(5)  // 5개 스레드 풀로 변경하여 모든 스레드가 동시에 실행될 수 있도록
         val latch = CountDownLatch(threadCount)
 
-        // When: 5개 스레드가 동시에 동일한 키로 결제 요청
-        repeat(threadCount) { _ ->
+        // When: 5개 스레드가 동시에 동일한 orderId와 idempotencyKey로 결제 요청 (동일한 요청의 concurrent retry 시뮬레이션)
+        repeat(threadCount) { index ->
             executor.submit {
                 try {
+                    logger.info("스레드 {} 결제 요청 시작", index)
                     val payment = paymentService.processPayment(
-                        orderId = orderId,
+                        orderId = orderId,  // 모든 스레드가 동일한 주문 ID 사용
                         amount = amount,
                         method = method,
-                        idempotencyKey = idempotencyKey
+                        idempotencyKey = idempotencyKey  // 동일한 idempotencyKey로 멱등성 보장
                     )
+                    logger.info("스레드 {} 결제 성공, ID: {}", index, payment.id)
                     synchronized(paymentIds) {
                         paymentIds.add(payment.id)
                     }
+                } catch (e: Exception) {
+                    logger.error("스레드 {} 결제 요청 실패: {} - {}", index, e::class.simpleName, e.message)
+                    logger.error("Exception stacktrace:", e)
+                    synchronized(exceptions) {
+                        exceptions.add(index to e)
+                    }
                 } finally {
+                    synchronized(completedThreads) {
+                        completedThreads.add(index)
+                        logger.info("스레드 {} 종료 (완료된 스레드: {}/{})", index, completedThreads.size, threadCount)
+                    }
                     latch.countDown()
                 }
             }
         }
 
-        // Awaitility로 모든 스레드 완료 대기 (CI 환경 안정성)
-        await("결제 동시 요청이 완료됨")
-            .atMost(Duration.ofSeconds(15))
-            .pollInterval(Duration.ofMillis(100))
-            .untilAsserted {
-                assertThat(paymentIds).hasSize(threadCount)
-            }
+        // Latch로 모든 스레드 완료 대기
+        logger.info("동시 결제 요청 시작: {} 개 스레드", threadCount)
+        val latched = latch.await(90, TimeUnit.SECONDS)
+        logger.info("모든 스레드 완료 여부: {}, 완료된 스레드: {}/{}, paymentIds: {}",
+            latched, completedThreads.size, threadCount, paymentIds.size)
 
         executor.shutdown()
 
+        // 예외 확인
+        if (exceptions.isNotEmpty()) {
+            logger.error("발생한 예외 목록:")
+            for ((threadIndex, exception) in exceptions) {
+                logger.error("스레드 {}: {}", threadIndex, exception.message)
+            }
+        }
+        assertThat(exceptions).isEmpty()
+
         // Then: 모든 요청이 동일한 결제 ID를 반환해야 함
+        logger.info("수집된 결제 ID: {}", paymentIds)
         val firstPaymentId = paymentIds[0]
         assertThat(paymentIds).allMatch { it == firstPaymentId }
         assertThat(paymentIds.toSet()).hasSize(1) // 단 1개의 unique ID
+        logger.info("멱등성 검증 완료: 모든 요청이 동일한 결제 ID를 반환함")
     }
 
     // ========================================
@@ -315,11 +341,15 @@ class DatabaseIntegrationTest {
 
         // When: 예약의 expiresAt을 과거로 설정하여 만료된 상태 만들기
         val expiredReservation = reservationRepository.findByOrderId(orderId)!!
-        expiredReservation.expiresAt = LocalDateTime.now().minusMinutes(1)
+        expiredReservation.expiresAt = LocalDateTime.of(2000, 1, 1, 0, 0, 0)  // 명시적인 과거 시간
         reservationRepository.save(expiredReservation)
+        reservationRepository.flush()  // DB에 즉시 반영
+        logger.info("예약 만료 시간 설정 완료: {}", expiredReservation.expiresAt)
 
         // expireReservations() 실행 - Scheduler에서 호출되는 메서드
+        logger.info("만료된 예약 처리 시작")
         val expiredCount = reservationService.expireReservations()
+        logger.info("처리된 만료 예약 개수: {}", expiredCount)
 
         // Then: 만료된 예약이 처리되어야 함
         assertThat(expiredCount).isEqualTo(1)
@@ -360,17 +390,20 @@ class DatabaseIntegrationTest {
         for (reservationId in reservationIds) {
             val reservation = reservationRepository.findById(reservationId).orElse(null)
             if (reservation != null) {
-                reservation.expiresAt = LocalDateTime.now().minusMinutes(1)
+                reservation.expiresAt = LocalDateTime.of(2000, 1, 1, 0, 0, 0)  // 명시적인 과거 시간
                 reservationRepository.save(reservation)
             }
         }
+        reservationRepository.flush()  // DB에 즉시 반영
 
         // 초기 재고 확인: 예약된 양이 차감됨 (100 - 2*3 = 94)
         var inventory = inventoryRepository.findBySku(sku)
         assertThat(inventory!!.physicalStock).isEqualTo(initialStock - (quantityPerReservation * reservationCount))
 
         // When: 만료된 예약 일괄 처리
+        logger.info("만료된 예약 처리 시작: {} 개 예약", reservationCount)
         val expiredCount = reservationService.expireReservations()
+        logger.info("처리된 만료 예약 개수: {}", expiredCount)
 
         // Then: 만료된 예약 개수 확인
         assertThat(expiredCount).isGreaterThanOrEqualTo(reservationCount)

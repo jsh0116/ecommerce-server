@@ -42,6 +42,7 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.mockk)
     testImplementation(libs.assertj)
+    testImplementation(libs.awaitility)
     testImplementation(libs.fixture.monkey.starter.kotlin)
     testImplementation(libs.bundles.testcontainers.mysql)
     testImplementation(libs.test.containers.redis)

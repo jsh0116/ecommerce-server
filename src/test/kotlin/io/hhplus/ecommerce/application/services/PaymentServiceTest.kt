@@ -45,6 +45,7 @@ class PaymentServiceTest {
             every { distributedLockService.tryLock(key = any(), waitTime = any(), holdTime = any(), unit = any()) } returns true
             every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns null
             every { paymentRepository.save(any()) } returns payment
+            every { paymentRepository.flush() } returns Unit
             every { distributedLockService.unlock(any()) } returns Unit
 
             // When
@@ -100,6 +101,7 @@ class PaymentServiceTest {
             every { distributedLockService.tryLock(key = any(), waitTime = any(), holdTime = any(), unit = any()) } returns true
             every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns null
             every { paymentRepository.save(any()) } returns payment
+            every { paymentRepository.flush() } returns Unit
             every { distributedLockService.unlock(any()) } returns Unit
 
             // When

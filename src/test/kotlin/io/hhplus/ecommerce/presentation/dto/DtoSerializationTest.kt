@@ -1,6 +1,7 @@
 package io.hhplus.ecommerce.presentation.dto
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.hhplus.ecommerce.config.TestContainersConfig
 import io.hhplus.ecommerce.config.TestRedissonConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
@@ -17,7 +18,7 @@ import org.springframework.test.context.ActiveProfiles
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
 @ActiveProfiles("test")
-@Import(TestRedissonConfig::class)
+@Import(TestContainersConfig::class, TestRedissonConfig::class)
 class DtoSerializationTest {
 
     @Autowired
