@@ -405,17 +405,59 @@ data class OrderItem(...) {
 - **Test Tags:** Use `@Tag("integration")` to mark tests that require external services
 - **Running:** `./gradlew testIntegration` runs only integration tests
 
+### Logging and Debugging in Tests
+- Use SLF4J Logger for test output instead of `println()`:
+```kotlin
+import org.slf4j.LoggerFactory
+
+class DatabaseIntegrationTest {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    @Test
+    fun testSomething() {
+        try {
+            // ... test code ...
+        } catch (e: Exception) {
+            logger.warn("테스트 중 예외 발생: {}", e.message, e)
+        }
+    }
+}
+```
+
+### JPA Persistence Context and Flush
+- When modifying entities and then querying with SQL/JPQL in the same `@Transactional` method, use `flush()`:
+```kotlin
+@Test
+fun testReservationExpiration() {
+    // Save changes to Persistence Context
+    val reservation = reservationRepository.findByOrderId(orderId)!!
+    reservation.expiresAt = LocalDateTime.now().minusHours(1)
+    reservationRepository.save(reservation)
+
+    // Flush: Write Persistence Context changes to database immediately
+    reservationRepository.flush()
+
+    // Query: Now the SQL query will see the updated data
+    val expiredCount = reservationService.expireReservations()
+    assertThat(expiredCount).isEqualTo(1)
+}
+```
+- **Why?** `save()` only updates the Persistence Context. SQL queries read directly from the database, so `flush()` is needed to sync.
+
 **Example Integration Test Setup:**
 ```kotlin
 @SpringBootTest
 @Tag("integration")
 class OrderIntegrationTest : IntegrationTestBase {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
     @Autowired private val orderService: OrderService
     @Autowired private val orderRepository: OrderRepository
 
     @Test
     fun shouldCreateOrderAndReduceStock() {
         // Test with real database and Redis via TestContainers
+        logger.info("테스트 시작: 주문 생성 및 재고 감소")
     }
 }
 ```
