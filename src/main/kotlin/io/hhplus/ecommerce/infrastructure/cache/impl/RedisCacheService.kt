@@ -2,6 +2,9 @@ package io.hhplus.ecommerce.infrastructure.cache.impl
 
 import io.hhplus.ecommerce.infrastructure.cache.CacheService
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.stereotype.Service
@@ -25,7 +28,14 @@ class RedisCacheService(
     private val redisTemplate: RedisTemplate<String, String>,
 ) : CacheService {
     private val logger = LoggerFactory.getLogger(javaClass)
-    private val objectMapper = ObjectMapper()
+    private val objectMapper = ObjectMapper().apply {
+        // Kotlin 모듈 등록
+        registerKotlinModule()
+        // Java Time 모듈 등록 (LocalDateTime 등 처리)
+        registerModule(JavaTimeModule())
+        // 타임스탬프를 문자열로 직렬화
+        disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+    }
 
     /**
      * 캐시에서 값을 조회합니다.
