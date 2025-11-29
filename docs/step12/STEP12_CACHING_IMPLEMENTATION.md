@@ -270,14 +270,26 @@ if (remainingTtl in 0..5) {
 - **TTL:** 60초
 - **무효화:** 예약/확정/취소/복구 후
 
+#### ProductUseCase ✅ (신규 추가)
+- **메서드 1:** `getProducts(category: String?, sort: String)`
+  - **읽기 빈도:** 매우 높음 (상품 목록 조회)
+  - **TTL:** 60초
+  - **캐시 키 형식:** `products:{category}:{sort}`
+  - **특징:** 카테고리별, 정렬 방식별로 개별 캐시
+
+- **메서드 2:** `getTopProducts(limit: Int)`
+  - **읽기 빈도:** 높음 (인기 상품 조회)
+  - **TTL:** 300초 (5분)
+  - **캐시 키 형식:** `products:top:limit:{limit}`
+  - **특징:** 인기도 점수 계산 결과 캐싱으로 CPU 부하 감소
+
 ### 향후 확대 대상
 
 | 서비스 | 메서드 | 빈도 | TTL | 우선순위 |
 |--------|--------|------|-----|---------|
-| ProductService | getProductById | 높음 | 600초 | 높음 |
-| ProductService | getProducts | 매우 높음 | 300초 | 매우 높음 |
+| ProductService | getProductById | 높음 | 600초 | 중간 |
 | CouponService | getUserCoupons | 중간 | 300초 | 중간 |
-| ReservationService | getReservationByOrderId | 중간 | 120초 | 중간 |
+| ReservationService | getReservationByOrderId | 중간 | 120초 | 낮음 |
 
 ---
 
@@ -430,9 +442,12 @@ k6 run k6/load-test-after-cache.js
 - ✅ Redis 인프라 구축 (RedisConfig)
 - ✅ 캐시 서비스 구현 (RedisCacheService)
 - ✅ Cache-Aside 패턴 적용 (InventoryService.getInventory)
+- ✅ Cache-Aside 패턴 적용 (ProductUseCase.getProducts)
+- ✅ Cache-Aside 패턴 적용 (ProductUseCase.getTopProducts)
 - ✅ 캐시 무효화 전략 적용 (모든 쓰기 메서드)
 - ✅ K6 부하 테스트 시나리오 작성
 - ✅ 프로젝트 컴파일 성공
+- ✅ 트랜잭션/락 순서 개선 (PaymentService)
 
 ### 성능 개선
 - **예상 응답시간 개선:** 60-70% (DB 쿼리 → 메모리 조회)

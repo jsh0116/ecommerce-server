@@ -33,6 +33,9 @@ dependencies {
     // Redis & Distributed Lock
     implementation("org.redisson:redisson-spring-boot-starter:${libs.versions.redisson.get()}")
 
+    // Jackson Kotlin Module (for JSON serialization with Kotlin data classes)
+    implementation(libs.jackson.kotlin)
+
     // Swagger UI & OpenAPI (Springdoc)
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.0.2")
 
@@ -82,6 +85,15 @@ tasks.test {
 tasks.register<Test>("testIntegration") {
     useJUnitPlatform {
         includeTags("integration")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+// Redis 없이 실행하는 통합 테스트 (로컬 개발용)
+tasks.register<Test>("testIntegrationNoRedis") {
+    useJUnitPlatform {
+        includeTags("integration")
+        excludeTags("redis-required")
     }
     shouldRunAfter(tasks.test)
 }

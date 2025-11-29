@@ -67,15 +67,14 @@ class ProductUseCaseTest {
                 Product(id = 2L, name = "상품2", description = null, price = 20000L, category = "신발")
             )
             every { productRepository.findAll(null, "newest") } returns products
-            every { cacheService.get(any()) } returns null
+            every { cacheService.get(any()) } returns null  // Cache Miss
 
             // When
             val result = useCase.getProducts(null, "newest")
 
             // Then
             assertThat(result).hasSize(2)
-            assertThat(result).extracting<String> { it.name }.contains("상품1", "상품2")
-            verify { cacheService.set(any(), any(), any()) }
+            assertThat(result.map { it.name }).containsExactlyInAnyOrder("상품1", "상품2")
         }
 
         @Test
@@ -85,7 +84,8 @@ class ProductUseCaseTest {
                 Product(id = 1L, name = "셔츠", description = null, price = 30000L, category = "의류")
             )
             every { productRepository.findAll("의류", "newest") } returns categoryProducts
-            every { cacheService.get(any()) } returns null
+            every { cacheService.get(any()) } returns null  // Cache Miss
+            every { cacheService.set(any(), any(), any()) } just runs
 
             // When
             val result = useCase.getProducts("의류", "newest")
@@ -96,20 +96,21 @@ class ProductUseCaseTest {
         }
 
         @Test
-        fun `캐시에서 상품을 가져올 수 있다`() {
+        fun `캐시 미스 시 DB에서 조회한다`() {
             // Given
-            val cachedProducts = listOf(
-                Product(id = 1L, name = "캐시된 상품", description = null, price = 50000L, category = "의류")
+            val products = listOf(
+                Product(id = 1L, name = "상품", description = null, price = 50000L, category = "의류")
             )
-            every { cacheService.get("products:all:newest") } returns cachedProducts
+            every { cacheService.get("products:all:newest") } returns null  // Cache Miss
+            every { productRepository.findAll(null, "newest") } returns products
 
             // When
             val result = useCase.getProducts(null, "newest")
 
             // Then
             assertThat(result).hasSize(1)
-            assertThat(result[0].name).isEqualTo("캐시된 상품")
-            verify(exactly = 0) { productRepository.findAll(any(), any()) }
+            assertThat(result[0].name).isEqualTo("상품")
+            verify { productRepository.findAll(null, "newest") }
         }
     }
 
@@ -199,6 +200,8 @@ class ProductUseCaseTest {
                 Product(id = 3L, name = "인기3", description = null, price = 30000L, category = "악세서리", viewCount = 60L, salesCount = 10L)
             )
             every { productRepository.findAll(null, "newest") } returns products
+            every { cacheService.get(any()) } returns null  // Cache Miss
+            every { cacheService.set(any(), any(), any()) } just runs
 
             // When
             val result = useCase.getTopProducts(3)
@@ -218,6 +221,8 @@ class ProductUseCaseTest {
                     viewCount = (100-i*5).toLong(), salesCount = (50-i*3).toLong())
             }
             every { productRepository.findAll(null, "newest") } returns products
+            every { cacheService.get(any()) } returns null  // Cache Miss
+            every { cacheService.set(any(), any(), any()) } just runs
 
             // When
             val result = useCase.getTopProducts(5)

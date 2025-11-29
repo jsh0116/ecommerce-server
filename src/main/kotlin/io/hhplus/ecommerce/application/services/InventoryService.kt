@@ -5,6 +5,9 @@ import io.hhplus.ecommerce.infrastructure.cache.CacheService
 import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.dao.PessimisticLockingFailureException
@@ -17,7 +20,14 @@ class InventoryService(
     private val inventoryRepository: InventoryJpaRepository,
     private val cacheService: CacheService
 ) {
-    private val objectMapper = ObjectMapper()
+    private val objectMapper = ObjectMapper().apply {
+        // Kotlin 모듈 등록
+        registerKotlinModule()
+        // Java Time 모듈 등록
+        registerModule(JavaTimeModule())
+        // 타임스탬프를 문자열로 직렬화
+        disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+    }
 
     companion object {
         private val logger = LoggerFactory.getLogger(InventoryService::class.java)

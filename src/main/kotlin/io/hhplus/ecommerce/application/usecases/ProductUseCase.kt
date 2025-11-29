@@ -4,6 +4,9 @@ import io.hhplus.ecommerce.domain.Product
 import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import io.hhplus.ecommerce.infrastructure.cache.CacheService
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.core.type.TypeReference
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
 /**
@@ -15,6 +18,15 @@ class ProductUseCase(
     private val inventoryRepository: InventoryRepository,
     private val cacheService: CacheService?
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
+    private val objectMapper = ObjectMapper()
+
+    companion object {
+        private const val TOP_PRODUCTS_CACHE_KEY = "products:top"
+        private const val PRODUCTS_CACHE_PREFIX = "products:"
+        private const val TOP_PRODUCTS_CACHE_TTL = 300 // 5분 (인기 상품은 자주 변경되므로 짧은 TTL)
+        private const val PRODUCTS_LIST_CACHE_TTL = 60 // 1분 (상품 목록)
+    }
     /**
      * 상품 단건 조회
      */
@@ -22,24 +34,52 @@ class ProductUseCase(
         return productRepository.findById(productId)
     }
     /**
-     * 상품 목록 조회 (캐시 확인 포함)
+     * 상품 목록 조회 (Redis Cache-Aside 패턴)
+     *
+     * 캐시 전략:
+     * - 카테고리별, 정렬 방식별로 캐시 키 생성
+     * - TTL 60초: 상품 정보는 자주 변경되지 않지만 실시간성 필요
+     * - Cache Miss 시 DB 조회 후 캐시 저장
      */
     fun getProducts(category: String?, sort: String): List<Product> {
-        val cacheKey = "products:${category ?: "all"}:$sort"
+        val cacheKey = "$PRODUCTS_CACHE_PREFIX${category ?: "all"}:$sort"
 
-        // 캐시 확인
-        cacheService?.get(cacheKey)?.let {
-            @Suppress("UNCHECKED_CAST")
-            return it as List<Product>
+        return try {
+            // 1단계: 캐시 조회 시도
+            val cachedValue = cacheService?.get(cacheKey)
+            if (cachedValue != null) {
+                logger.debug("상품 목록 캐시 히트: cacheKey=$cacheKey")
+                // JSON 문자열을 List<Product>로 역직렬화
+                return try {
+                    objectMapper.readValue(cachedValue as String, object : TypeReference<List<Product>>() {})
+                } catch (e: Exception) {
+                    logger.warn("상품 목록 캐시 역직렬화 실패: cacheKey=$cacheKey, error=${e.message}")
+                    // 캐시 삭제 후 DB에서 조회
+                    cacheService?.delete(cacheKey)
+                    productRepository.findAll(category, sort)
+                }
+            }
+
+            // 2단계: 캐시 미스 - DB에서 조회
+            logger.debug("상품 목록 캐시 미스: cacheKey=$cacheKey, DB에서 조회 중")
+            val products = productRepository.findAll(category, sort)
+
+            // 3단계: DB에서 조회한 데이터를 캐시에 저장
+            try {
+                val jsonValue = objectMapper.writeValueAsString(products)
+                cacheService?.set(cacheKey, jsonValue, PRODUCTS_LIST_CACHE_TTL)
+                logger.debug("상품 목록 캐시 저장 완료: cacheKey=$cacheKey, ttl=${PRODUCTS_LIST_CACHE_TTL}s, count=${products.size}")
+            } catch (e: Exception) {
+                logger.warn("상품 목록 캐시 저장 실패: cacheKey=$cacheKey, error=${e.message}")
+                // 캐시 저장 실패는 무시하고 데이터 반환
+            }
+
+            products
+        } catch (e: Exception) {
+            logger.error("상품 목록 조회 중 예외 발생: cacheKey=$cacheKey, error=${e.message}", e)
+            // 예외 발생 시 캐시 없이 DB에서 조회
+            productRepository.findAll(category, sort)
         }
-
-        // DB 조회
-        val products = productRepository.findAll(category, sort)
-
-        // 캐시 저장 (TTL = 60초)
-        cacheService?.set(cacheKey, products, 60)
-
-        return products
     }
 
     /**
@@ -69,12 +109,61 @@ class ProductUseCase(
     }
 
     /**
-     * 인기 상품 조회 (조회수 및 판매량 기반 순위 계산)
+     * 인기 상품 조회 (조회수 및 판매량 기반 순위 계산 + Redis 캐싱)
+     *
+     * 캐시 전략:
+     * - 인기 상품은 자주 조회되지만 실시간성이 크게 중요하지 않음
+     * - TTL 5분(300초): 조회수/판매량 변경을 반영하면서도 DB 부하 감소
+     * - Cache-Aside 패턴: 캐시 미스 시 DB 조회 후 캐시 저장
      *
      * 인기도 점수 = (판매량 × 10) + 조회수
      * - 판매량에 더 높은 가중치를 부여하여 실제 구매로 이어진 상품을 우선
      */
     fun getTopProducts(limit: Int = 5): TopProductResponse {
+        val cacheKey = "${TOP_PRODUCTS_CACHE_KEY}:limit:$limit"
+
+        return try {
+            // 1단계: 캐시 조회 시도
+            val cachedValue = cacheService?.get(cacheKey)
+            if (cachedValue != null) {
+                logger.debug("인기 상품 캐시 히트: cacheKey=$cacheKey")
+                // JSON 문자열을 TopProductResponse로 역직렬화
+                return try {
+                    objectMapper.readValue(cachedValue as String, TopProductResponse::class.java)
+                } catch (e: Exception) {
+                    logger.warn("인기 상품 캐시 역직렬화 실패: cacheKey=$cacheKey, error=${e.message}")
+                    // 캐시 삭제 후 DB에서 조회
+                    cacheService?.delete(cacheKey)
+                    calculateTopProducts(limit)
+                }
+            }
+
+            // 2단계: 캐시 미스 - DB에서 조회 및 계산
+            logger.debug("인기 상품 캐시 미스: cacheKey=$cacheKey, DB에서 조회 중")
+            val response = calculateTopProducts(limit)
+
+            // 3단계: DB에서 조회한 데이터를 캐시에 저장
+            try {
+                val jsonValue = objectMapper.writeValueAsString(response)
+                cacheService?.set(cacheKey, jsonValue, TOP_PRODUCTS_CACHE_TTL)
+                logger.debug("인기 상품 캐시 저장 완료: cacheKey=$cacheKey, ttl=${TOP_PRODUCTS_CACHE_TTL}s, count=${response.products.size}")
+            } catch (e: Exception) {
+                logger.warn("인기 상품 캐시 저장 실패: cacheKey=$cacheKey, error=${e.message}")
+                // 캐시 저장 실패는 무시하고 데이터 반환
+            }
+
+            response
+        } catch (e: Exception) {
+            logger.error("인기 상품 조회 중 예외 발생: cacheKey=$cacheKey, error=${e.message}", e)
+            // 예외 발생 시 캐시 없이 DB에서 조회
+            calculateTopProducts(limit)
+        }
+    }
+
+    /**
+     * 인기 상품 계산 로직 (캐싱 로직과 분리)
+     */
+    private fun calculateTopProducts(limit: Int): TopProductResponse {
         // 전체 상품 조회
         val allProducts = productRepository.findAll(null, "newest")
 
