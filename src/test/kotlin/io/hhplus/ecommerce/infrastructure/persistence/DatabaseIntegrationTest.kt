@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * 2. Idempotency Test: 멱등성을 통한 중복 결제 방지
  * 3. Saga Test: TTL 기반 자동 만료 및 재고 복구
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")

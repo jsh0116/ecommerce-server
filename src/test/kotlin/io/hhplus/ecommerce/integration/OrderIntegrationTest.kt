@@ -19,7 +19,7 @@ import java.time.LocalDateTime
 /**
  * Order 통합 테스트 (실제 MySQL 데이터베이스 사용)
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
 @DisplayName("Order 통합 테스트")

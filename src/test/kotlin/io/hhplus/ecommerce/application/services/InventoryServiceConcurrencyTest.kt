@@ -30,10 +30,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * - 재고 복구 정확성
  * - Redisson 분산 락 동작
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
 @Import(TestContainersConfig::class)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
 @DisplayName("재고 서비스 동시성 통합 테스트")
 class InventoryServiceConcurrencyTest {
