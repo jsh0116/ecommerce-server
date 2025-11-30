@@ -3,7 +3,8 @@ package io.hhplus.ecommerce.application.usecases
 import io.hhplus.ecommerce.domain.Product
 import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
-import io.hhplus.ecommerce.infrastructure.cache.CacheService
+import org.slf4j.LoggerFactory
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 
 /**
@@ -12,9 +13,9 @@ import org.springframework.stereotype.Service
 @Service
 class ProductUseCase(
     private val productRepository: ProductRepository,
-    private val inventoryRepository: InventoryRepository,
-    private val cacheService: CacheService?
+    private val inventoryRepository: InventoryRepository
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
     /**
      * 상품 단건 조회
      */
@@ -22,24 +23,16 @@ class ProductUseCase(
         return productRepository.findById(productId)
     }
     /**
-     * 상품 목록 조회 (캐시 확인 포함)
+     * 상품 목록 조회
+     *
+     * Spring Cache 전략:
+     * - 카테고리별, 정렬 방식별로 캐시 키 자동 생성
+     * - TTL 60초 (RedisConfig에서 설정)
      */
+    @Cacheable(value = ["products"], key = "T(String).valueOf(#category ?: 'all') + ':' + #sort")
     fun getProducts(category: String?, sort: String): List<Product> {
-        val cacheKey = "products:${category ?: "all"}:$sort"
-
-        // 캐시 확인
-        cacheService?.get(cacheKey)?.let {
-            @Suppress("UNCHECKED_CAST")
-            return it as List<Product>
-        }
-
-        // DB 조회
-        val products = productRepository.findAll(category, sort)
-
-        // 캐시 저장 (TTL = 60초)
-        cacheService?.set(cacheKey, products, 60)
-
-        return products
+        logger.debug("상품 목록 조회 (DB): category=$category, sort=$sort")
+        return productRepository.findAll(category, sort)
     }
 
     /**
@@ -71,10 +64,14 @@ class ProductUseCase(
     /**
      * 인기 상품 조회 (조회수 및 판매량 기반 순위 계산)
      *
-     * 인기도 점수 = (판매량 × 10) + 조회수
-     * - 판매량에 더 높은 가중치를 부여하여 실제 구매로 이어진 상품을 우선
+     * Spring Cache 전략:
+     * - TTL 5분 (RedisConfig에서 topProducts 캐시로 설정)
+     * - 인기도 점수 = (판매량 × 10) + 조회수
      */
+    @Cacheable(value = ["topProducts"], key = "#limit")
     fun getTopProducts(limit: Int = 5): TopProductResponse {
+        logger.debug("인기 상품 조회 (DB): limit=$limit")
+
         // 전체 상품 조회
         val allProducts = productRepository.findAll(null, "newest")
 

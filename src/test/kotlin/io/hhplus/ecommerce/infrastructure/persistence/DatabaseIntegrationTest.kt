@@ -4,6 +4,7 @@ import io.hhplus.ecommerce.application.services.InventoryService
 import io.hhplus.ecommerce.application.services.PaymentService
 import io.hhplus.ecommerce.application.services.ReservationService
 import io.hhplus.ecommerce.config.TestContainersConfig
+import io.hhplus.ecommerce.config.TestRedisConfig
 import io.hhplus.ecommerce.config.TestRedissonConfig
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentMethodJpa
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationStatusJpa
@@ -37,11 +38,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * 2. Idempotency Test: 멱등성을 통한 중복 결제 방지
  * 3. Saga Test: TTL 기반 자동 만료 및 재고 복구
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
-@Import(TestContainersConfig::class, TestRedissonConfig::class)
+@Tag("redis-required")
+@Import(TestContainersConfig::class, TestRedissonConfig::class, TestRedisConfig::class)
 class DatabaseIntegrationTest {
     private val logger = LoggerFactory.getLogger(javaClass)
 

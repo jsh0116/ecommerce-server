@@ -37,5 +37,8 @@ spring:
 logging:
   level:
     root: INFO
-    io.hhplus.ecommerce: DEBUG
+    io.hhplus.ecommerce: INFO
+    io.hhplus.ecommerce.infrastructure.cache: WARN
+    io.hhplus.ecommerce.application.services.InventoryService: WARN
     org.redisson: WARN
+    org.springframework.data.redis.repository.configuration: ERROR  # Redis Repository 경고 제거

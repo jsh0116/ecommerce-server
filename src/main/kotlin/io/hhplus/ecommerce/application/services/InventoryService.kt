@@ -4,6 +4,8 @@ import io.hhplus.ecommerce.exception.InventoryException
 import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
 import org.slf4j.LoggerFactory
+import org.springframework.cache.annotation.CacheEvict
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.stereotype.Service
@@ -14,7 +16,11 @@ import java.time.LocalDateTime
 class InventoryService(
     private val inventoryRepository: InventoryJpaRepository
 ) {
+    companion object {
+        private val logger = LoggerFactory.getLogger(InventoryService::class.java)
+    }
     @Transactional
+    @CacheEvict(value = ["inventory"], key = "#sku")
     fun reserveStock(sku: String, quantity: Int): InventoryJpaEntity {
         return try {
             logger.debug("재고 예약 시작: sku=$sku, quantity=$quantity")
@@ -46,6 +52,7 @@ class InventoryService(
     }
 
     @Transactional
+    @CacheEvict(value = ["inventory"], key = "#sku")
     fun confirmReservation(sku: String, quantity: Int): InventoryJpaEntity {
         return try {
             logger.debug("예약 확정 시작: sku=$sku, quantity=$quantity")
@@ -72,6 +79,7 @@ class InventoryService(
     }
 
     @Transactional
+    @CacheEvict(value = ["inventory"], key = "#sku")
     fun cancelReservation(sku: String, quantity: Int): InventoryJpaEntity {
         return try {
             logger.debug("예약 취소 시작: sku=$sku, quantity=$quantity")
@@ -98,6 +106,7 @@ class InventoryService(
     }
 
     @Transactional
+    @CacheEvict(value = ["inventory"], key = "#sku")
     fun restoreStock(sku: String, quantity: Int): InventoryJpaEntity {
         return try {
             logger.debug("재고 복구 시작: sku=$sku, quantity=$quantity")
@@ -123,8 +132,10 @@ class InventoryService(
         }
     }
 
+    @Cacheable(value = ["inventory"], key = "#sku")
     @Transactional(readOnly = true)
     fun getInventory(sku: String): InventoryJpaEntity? {
+        logger.debug("재고 조회 (DB): sku=$sku")
         return inventoryRepository.findBySku(sku)
     }
 
@@ -152,9 +163,5 @@ class InventoryService(
         inventory.updateStatus()
         logger.info("재고 생성 완료: sku=$sku, physicalStock=$physicalStock, safetyStock=$safetyStock")
         return inventoryRepository.save(inventory)
-    }
-
-    companion object {
-        private val logger = LoggerFactory.getLogger(InventoryService::class.java)
     }
 }

@@ -2,6 +2,7 @@ package io.hhplus.ecommerce.infrastructure.persistence.entity
 
 import io.hhplus.ecommerce.domain.StockStatus
 import jakarta.persistence.*
+import java.io.Serializable
 import java.time.LocalDateTime
 
 /**
@@ -46,10 +47,15 @@ class InventoryJpaEntity(
 
     @Version
     val version: Long = 0
-) {
+) : Serializable {
+    companion object {
+        private const val serialVersionUID = 1L
+    }
     /**
      * 가용 재고 계산
+     * @JsonIgnore: Jackson 직렬화에서 제외 (계산된 값이므로 캐시에 저장하지 않음)
      */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     fun getAvailableStock(): Int {
         return (physicalStock - reservedStock - safetyStock).coerceAtLeast(0)
     }
