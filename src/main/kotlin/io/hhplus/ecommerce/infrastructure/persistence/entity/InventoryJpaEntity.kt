@@ -49,7 +49,9 @@ class InventoryJpaEntity(
 ) {
     /**
      * 가용 재고 계산
+     * @JsonIgnore: Jackson 직렬화에서 제외 (계산된 값이므로 캐시에 저장하지 않음)
      */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     fun getAvailableStock(): Int {
         return (physicalStock - reservedStock - safetyStock).coerceAtLeast(0)
     }

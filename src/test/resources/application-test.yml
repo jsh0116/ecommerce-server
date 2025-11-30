@@ -37,5 +37,7 @@ spring:
 logging:
   level:
     root: INFO
-    io.hhplus.ecommerce: DEBUG
+    io.hhplus.ecommerce: INFO
+    io.hhplus.ecommerce.infrastructure.cache: WARN
+    io.hhplus.ecommerce.application.services.InventoryService: WARN
     org.redisson: WARN
