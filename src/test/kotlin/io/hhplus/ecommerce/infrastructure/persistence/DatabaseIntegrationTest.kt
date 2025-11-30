@@ -4,6 +4,7 @@ import io.hhplus.ecommerce.application.services.InventoryService
 import io.hhplus.ecommerce.application.services.PaymentService
 import io.hhplus.ecommerce.application.services.ReservationService
 import io.hhplus.ecommerce.config.TestContainersConfig
+import io.hhplus.ecommerce.config.TestRedisConfig
 import io.hhplus.ecommerce.config.TestRedissonConfig
 import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentMethodJpa
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationStatusJpa
@@ -41,7 +42,8 @@ import java.util.concurrent.atomic.AtomicInteger
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
-@Import(TestContainersConfig::class, TestRedissonConfig::class)
+@Tag("redis-required")
+@Import(TestContainersConfig::class, TestRedissonConfig::class, TestRedisConfig::class)
 class DatabaseIntegrationTest {
     private val logger = LoggerFactory.getLogger(javaClass)
 

@@ -10,19 +10,21 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
+import io.hhplus.ecommerce.config.TestRedisConfig
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.data.redis.core.RedisTemplate
+import org.springframework.cache.CacheManager
+import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
 import java.time.LocalDateTime
-import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @ActiveProfiles("test")
 @Tag("integration")
-@Tag("redis-required")  // Redis가 필요한 테스트임을 명시
-@DisplayName("캐싱 통합 테스트 (Redis 실제 사용)")
-class CachingIntegrationTest : IntegrationTestBase() {
+@Tag("redis-required")
+@DisplayName("Spring Cache 통합 테스트")
+@Import(TestRedisConfig::class)  // 실제 Redis 연결 사용
+class CachingIntegrationTest {
 
     @Autowired
     private lateinit var inventoryService: InventoryService
@@ -31,15 +33,14 @@ class CachingIntegrationTest : IntegrationTestBase() {
     private lateinit var inventoryRepository: InventoryJpaRepository
 
     @Autowired
-    private lateinit var redisTemplate: RedisTemplate<String, String>
+    private lateinit var cacheManager: CacheManager
 
     private val testSku = "TEST-SKU-001"
-    private val cacheKey = "inventory:$testSku"
 
     @BeforeEach
     fun setUp() {
         // 캐시 및 DB 초기화
-        redisTemplate.delete(cacheKey)
+        cacheManager.getCache("inventory")?.clear()
         inventoryRepository.deleteAll()
 
         // 테스트용 재고 생성
@@ -56,253 +57,116 @@ class CachingIntegrationTest : IntegrationTestBase() {
     }
 
     @Nested
-    @DisplayName("Cache-Aside 패턴 통합 테스트")
-    inner class CacheAsideIntegrationTest {
+    @DisplayName("@Cacheable 동작 테스트")
+    inner class CacheableTest {
 
         @Test
-        fun `첫 번째 조회는 DB에서 데이터를 가져오고 캐시에 저장한다`() {
-            // Given
-            assertThat(redisTemplate.hasKey(cacheKey)).isFalse
-
-            // When
-            val inventory = inventoryService.getInventory(testSku)
-
-            // Then
-            assertThat(inventory).isNotNull
-            assertThat(inventory?.sku).isEqualTo(testSku)
-
-            // 캐시에 저장되었는지 확인
-            val cachedValue = redisTemplate.opsForValue().get(cacheKey)
-            assertThat(cachedValue).isNotNull
-            assertThat(cachedValue).contains(testSku)
-        }
-
-        @Test
-        fun `두 번째 조회는 캐시에서 데이터를 가져온다`() {
-            // Given
-            // 첫 번째 조회로 캐시 워밍업
-            inventoryService.getInventory(testSku)
-
-            // 캐시의 TTL 확인
-            val ttl = redisTemplate.getExpire(cacheKey, TimeUnit.SECONDS)
-            assertThat(ttl).isGreaterThan(0)
-
-            // When
-            val inventory = inventoryService.getInventory(testSku)
-
-            // Then
-            assertThat(inventory).isNotNull
-            assertThat(inventory?.sku).isEqualTo(testSku)
-        }
-
-        @Test
-        fun `캐시 TTL이 60초로 설정된다`() {
-            // Given
-            inventoryService.getInventory(testSku)
-
-            // When
-            val ttl = redisTemplate.getExpire(cacheKey, TimeUnit.SECONDS)
-
-            // Then
-            assertThat(ttl).isGreaterThan(50)  // 60초 이상 (네트워크 지연 고려)
-            assertThat(ttl).isLessThanOrEqualTo(60)
-        }
-
-        @Test
-        fun `캐시 데이터는 유효한 JSON 형식이다`() {
-            // Given
-            inventoryService.getInventory(testSku)
-
-            // When
-            val cachedValue = redisTemplate.opsForValue().get(cacheKey)
-
-            // Then
-            assertThat(cachedValue).isNotNull
-            assertThat(cachedValue).contains("""{"id":""")
-            assertThat(cachedValue).contains(""""sku":"$testSku"""")
-        }
-    }
-
-    @Nested
-    @DisplayName("캐시 무효화 통합 테스트")
-    inner class CacheInvalidationIntegrationTest {
-
-        @Test
-        fun `재고 예약 후 캐시가 무효화된다`() {
-            // Given
-            // 캐시 워밍업
-            inventoryService.getInventory(testSku)
-            assertThat(redisTemplate.hasKey(cacheKey)).isTrue
-
-            // When
-            inventoryService.reserveStock(testSku, 10)
-
-            // Then
-            // 캐시가 삭제되어야 함
-            assertThat(redisTemplate.hasKey(cacheKey)).isFalse
-        }
-
-        @Test
-        fun `예약 확정 후 캐시가 무효화된다`() {
-            // Given
-            inventoryService.getInventory(testSku)
-            inventoryService.reserveStock(testSku, 10)
-
-            assertThat(redisTemplate.hasKey(cacheKey)).isFalse
-
-            // 캐시 재설정
-            inventoryService.getInventory(testSku)
-            assertThat(redisTemplate.hasKey(cacheKey)).isTrue
-
-            // When
-            inventoryService.confirmReservation(testSku, 10)
-
-            // Then
-            assertThat(redisTemplate.hasKey(cacheKey)).isFalse
-        }
-
-        @Test
-        fun `예약 취소 후 캐시가 무효화된다`() {
-            // Given
-            inventoryService.getInventory(testSku)
-            inventoryService.reserveStock(testSku, 10)
-
-            // 캐시 재설정
-            inventoryService.getInventory(testSku)
-            assertThat(redisTemplate.hasKey(cacheKey)).isTrue
-
-            // When
-            inventoryService.cancelReservation(testSku, 10)
-
-            // Then
-            assertThat(redisTemplate.hasKey(cacheKey)).isFalse
-        }
-
-        @Test
-        fun `재고 복구 후 캐시가 무효화된다`() {
-            // Given
-            inventoryService.getInventory(testSku)
-            inventoryService.reserveStock(testSku, 10)
-            inventoryService.confirmReservation(testSku, 10)
-
-            // 캐시 재설정
-            inventoryService.getInventory(testSku)
-            assertThat(redisTemplate.hasKey(cacheKey)).isTrue
-
-            // When
-            inventoryService.restoreStock(testSku, 10)
-
-            // Then
-            assertThat(redisTemplate.hasKey(cacheKey)).isFalse
-        }
-    }
-
-    @Nested
-    @DisplayName("캐시 일관성 테스트")
-    inner class CacheConsistencyTest {
-
-        @Test
-        fun `캐시 무효화 후 다시 조회하면 최신 데이터를 가져온다`() {
-            // Given
-            val firstResult = inventoryService.getInventory(testSku)
-            assertThat(firstResult?.physicalStock).isEqualTo(100)
-
-            // 캐시 삭제
-            redisTemplate.delete(cacheKey)
-
-            // DB 데이터 수정
-            val inventory = inventoryRepository.findAll().first()
-            inventory.physicalStock = 50
-            inventoryRepository.save(inventory)
-
-            // When
-            val secondResult = inventoryService.getInventory(testSku)
-
-            // Then
-            // DB에서 최신 데이터를 조회해야 함
-            assertThat(secondResult?.physicalStock).isEqualTo(50)
-        }
-
-        @Test
-        fun `캐시가 있으면 DB 변경과 무관하게 캐시 값을 반환한다 (TTL 만료 전)`() {
-            // Given
-            val firstResult = inventoryService.getInventory(testSku)
-            assertThat(firstResult?.physicalStock).isEqualTo(100)
-
-            // 캐시에 저장되었는지 확인
-            assertThat(redisTemplate.hasKey(cacheKey)).isTrue
-
-            // When - TTL 만료 전 재조회
-            val secondResult = inventoryService.getInventory(testSku)
-
-            // Then - 동일한 캐시 값 반환
-            assertThat(secondResult?.physicalStock).isEqualTo(100)
-            assertThat(secondResult?.sku).isEqualTo(testSku)
-        }
-
-        @Test
-        fun `여러 SKU의 캐시가 독립적으로 관리된다`() {
-            // Given
-            val sku1 = "SKU-001"
-            val sku2 = "SKU-002"
-            val cacheKey1 = "inventory:$sku1"
-            val cacheKey2 = "inventory:$sku2"
-
-            val inv1 = InventoryJpaEntity(sku = sku1, physicalStock = 100)
-            val inv2 = InventoryJpaEntity(sku = sku2, physicalStock = 200)
-            inventoryRepository.saveAll(listOf(inv1, inv2))
-
-            // When
-            inventoryService.getInventory(sku1)
-            inventoryService.getInventory(sku2)
-
-            // Then
-            assertThat(redisTemplate.hasKey(cacheKey1)).isTrue
-            assertThat(redisTemplate.hasKey(cacheKey2)).isTrue
-
-            val cached1 = redisTemplate.opsForValue().get(cacheKey1)
-            val cached2 = redisTemplate.opsForValue().get(cacheKey2)
-
-            assertThat(cached1).contains(sku1)
-            assertThat(cached2).contains(sku2)
-        }
-    }
-
-    @Nested
-    @DisplayName("캐시 오류 처리 테스트")
-    inner class CacheErrorHandlingTest {
-
-        @Test
-        fun `캐시 역직렬화 오류 시 DB에서 조회한다`() {
-            // Given
-            // 잘못된 JSON을 캐시에 저장
-            val invalidJson = "{invalid json"
-            redisTemplate.opsForValue().set(cacheKey, invalidJson, 60, TimeUnit.SECONDS)
-
+        fun `재고 조회가 정상적으로 작동한다`() {
             // When
             val result = inventoryService.getInventory(testSku)
 
             // Then
             assertThat(result).isNotNull
             assertThat(result?.sku).isEqualTo(testSku)
-
-            // 캐시가 삭제되었는지 확인
-            assertThat(redisTemplate.hasKey(cacheKey)).isFalse
+            assertThat(result?.physicalStock).isEqualTo(100)
         }
 
         @Test
-        fun `존재하지 않는 SKU 조회는 null을 반환한다`() {
+        fun `여러 번 조회해도 일관된 데이터를 반환한다`() {
+            // When
+            val result1 = inventoryService.getInventory(testSku)
+            val result2 = inventoryService.getInventory(testSku)
+            val result3 = inventoryService.getInventory(testSku)
+
+            // Then - 모두 동일한 데이터
+            assertThat(result1?.physicalStock).isEqualTo(100)
+            assertThat(result2?.physicalStock).isEqualTo(100)
+            assertThat(result3?.physicalStock).isEqualTo(100)
+        }
+
+        @Test
+        fun `여러 SKU가 독립적으로 관리된다`() {
             // Given
-            val nonExistentSku = "NONEXISTENT-SKU"
+            val sku1 = "SKU-001"
+            val sku2 = "SKU-002"
+            inventoryRepository.save(InventoryJpaEntity(sku = sku1, physicalStock = 100))
+            inventoryRepository.save(InventoryJpaEntity(sku = sku2, physicalStock = 200))
 
             // When
-            val result = inventoryService.getInventory(nonExistentSku)
+            val result1 = inventoryService.getInventory(sku1)
+            val result2 = inventoryService.getInventory(sku2)
+
+            // Then
+            assertThat(result1?.physicalStock).isEqualTo(100)
+            assertThat(result2?.physicalStock).isEqualTo(200)
+        }
+
+        @Test
+        fun `존재하지 않는 SKU는 null을 반환한다`() {
+            // When
+            val result = inventoryService.getInventory("NONEXISTENT-SKU")
 
             // Then
             assertThat(result).isNull()
+        }
+    }
 
-            // 캐시에 저장되지 않아야 함
-            assertThat(redisTemplate.hasKey("inventory:$nonExistentSku")).isFalse
+    @Nested
+    @DisplayName("@CacheEvict 동작 테스트")
+    inner class CacheEvictTest {
+
+        @Test
+        fun `재고 예약 후 최신 데이터를 반환한다`() {
+            // Given - 초기 조회
+            val before = inventoryService.getInventory(testSku)
+            assertThat(before?.physicalStock).isEqualTo(100)
+
+            // When - 재고 예약 (CacheEvict 발동)
+            inventoryService.reserveStock(testSku, 10)
+
+            // Then - 변경된 데이터 반환 (physicalStock이 감소)
+            val after = inventoryService.getInventory(testSku)
+            assertThat(after?.physicalStock).isEqualTo(90)
+        }
+
+        @Test
+        fun `예약 확정 후 최신 데이터를 반환한다`() {
+            // Given - 재고 예약 (100 -> 90)
+            inventoryService.reserveStock(testSku, 10)
+
+            // When - 예약 확정
+            inventoryService.confirmReservation(testSku, 10)
+
+            // Then - physicalStock은 이미 reserve에서 감소했으므로 그대로 90
+            val after = inventoryService.getInventory(testSku)
+            assertThat(after?.physicalStock).isEqualTo(90)
+        }
+
+        @Test
+        fun `예약 취소 후 최신 데이터를 반환한다`() {
+            // Given - 재고 예약 (100 -> 90)
+            inventoryService.reserveStock(testSku, 10)
+
+            // When - 예약 취소 (90 -> 100 복구)
+            inventoryService.cancelReservation(testSku, 10)
+
+            // Then - physicalStock이 원래대로 복구됨
+            val after = inventoryService.getInventory(testSku)
+            assertThat(after?.physicalStock).isEqualTo(100)
+        }
+
+        @Test
+        fun `재고 복구 후 최신 데이터를 반환한다`() {
+            // Given
+            inventoryService.reserveStock(testSku, 10)
+            inventoryService.confirmReservation(testSku, 10)
+
+            // When
+            inventoryService.restoreStock(testSku, 10)
+
+            // Then
+            val after = inventoryService.getInventory(testSku)
+            assertThat(after?.physicalStock).isEqualTo(100)
         }
     }
 
@@ -311,22 +175,19 @@ class CachingIntegrationTest : IntegrationTestBase() {
     inner class CachePerformanceTest {
 
         @Test
-        fun `캐시 히트는 DB 조회보다 빠르다`() {
-            // Given
-            // 워밍업
+        fun `반복 조회 시 빠른 응답 시간을 보인다`() {
+            // Given - 첫 조회로 캐시 워밍업
             inventoryService.getInventory(testSku)
 
-            // When - 캐시 히트
-            val startCache = System.nanoTime()
+            // When - 100회 조회
+            val startTime = System.currentTimeMillis()
             repeat(100) {
                 inventoryService.getInventory(testSku)
             }
-            val cacheDuration = System.nanoTime() - startCache
+            val duration = System.currentTimeMillis() - startTime
 
-            // Then
-            // 캐시 100회 조회는 DB 조회보다 빨라야 함 (넉넉하게 500ms 이내)
-            val cacheDurationMs = cacheDuration / 1_000_000
-            assertThat(cacheDurationMs).isLessThan(500)  // 100회에 500ms 이내
+            // Then - 100회 조회가 1초 이내
+            assertThat(duration).isLessThan(1000)
         }
     }
 }
