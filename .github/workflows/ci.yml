@@ -30,6 +30,16 @@ jobs:
         ports:
           - 3306:3306
 
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 6379:6379
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -58,13 +68,23 @@ jobs:
         env:
           GRADLE_OPTS: "-Xmx2048m"
 
+      - name: Verify MySQL is ready
+        run: |
+          mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot --silent || echo "MySQL may not be ready"
+
+      - name: Verify Redis is ready
+        run: |
+          redis-cli -h 127.0.0.1 -p 6379 ping || echo "Redis may not be ready"
+
       - name: Run integration tests
-        run: ./gradlew testIntegration
+        run: ./gradlew testIntegration --info
         env:
           GRADLE_OPTS: "-Xmx2048m"
-          SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/hhplus_ecommerce_test
+          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/hhplus_ecommerce_test
           SPRING_DATASOURCE_USERNAME: root
           SPRING_DATASOURCE_PASSWORD: root
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
 
       - name: Generate test report
         if: always()

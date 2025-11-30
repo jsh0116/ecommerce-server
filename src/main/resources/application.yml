@@ -14,6 +14,9 @@ spring:
         use_sql_comments: true
         jdbc:
           batch_size: 20
+          # 비관적 락 타임아웃 설정 (밀리초)
+          # 3초 이상 락을 획득할 수 없으면 예외 발생
+          lock_timeout: 3000
         order_inserts: true
         order_updates: true
 

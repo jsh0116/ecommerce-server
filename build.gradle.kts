@@ -30,6 +30,12 @@ dependencies {
     implementation(libs.mysql.connector)
     runtimeOnly(libs.h2)
 
+    // Redis & Distributed Lock
+    implementation("org.redisson:redisson-spring-boot-starter:${libs.versions.redisson.get()}")
+
+    // Jackson Kotlin Module (for JSON serialization with Kotlin data classes)
+    implementation(libs.jackson.kotlin)
+
     // Swagger UI & OpenAPI (Springdoc)
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.0.2")
 
@@ -39,8 +45,10 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.mockk)
     testImplementation(libs.assertj)
+    testImplementation(libs.awaitility)
     testImplementation(libs.fixture.monkey.starter.kotlin)
     testImplementation(libs.bundles.testcontainers.mysql)
+    testImplementation(libs.test.containers.redis)
 }
 
 // about source and compilation
@@ -77,6 +85,15 @@ tasks.test {
 tasks.register<Test>("testIntegration") {
     useJUnitPlatform {
         includeTags("integration")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+// Redis 없이 실행하는 통합 테스트 (로컬 개발용)
+tasks.register<Test>("testIntegrationNoRedis") {
+    useJUnitPlatform {
+        includeTags("integration")
+        excludeTags("redis-required")
     }
     shouldRunAfter(tasks.test)
 }

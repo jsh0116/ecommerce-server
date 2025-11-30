@@ -2,13 +2,10 @@ package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.domain.Inventory
 import io.hhplus.ecommerce.domain.Product
-import io.hhplus.ecommerce.infrastructure.cache.CacheService
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
-import io.mockk.runs
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -22,8 +19,8 @@ class ProductUseCaseTest {
 
     private val productRepository = mockk<ProductRepository>()
     private val inventoryRepository = mockk<InventoryRepository>()
-    private val cacheService = mockk<CacheService>(relaxed = true)
-    private val useCase = ProductUseCase(productRepository, inventoryRepository, cacheService)
+    // Spring Cache 어노테이션을 사용하므로 CacheService는 제거
+    private val useCase = ProductUseCase(productRepository, inventoryRepository)
 
     @Nested
     @DisplayName("상품 조회 테스트")
@@ -67,15 +64,13 @@ class ProductUseCaseTest {
                 Product(id = 2L, name = "상품2", description = null, price = 20000L, category = "신발")
             )
             every { productRepository.findAll(null, "newest") } returns products
-            every { cacheService.get(any()) } returns null
 
             // When
             val result = useCase.getProducts(null, "newest")
 
             // Then
             assertThat(result).hasSize(2)
-            assertThat(result).extracting<String> { it.name }.contains("상품1", "상품2")
-            verify { cacheService.set(any(), any(), any()) }
+            assertThat(result.map { it.name }).containsExactlyInAnyOrder("상품1", "상품2")
         }
 
         @Test
@@ -85,7 +80,6 @@ class ProductUseCaseTest {
                 Product(id = 1L, name = "셔츠", description = null, price = 30000L, category = "의류")
             )
             every { productRepository.findAll("의류", "newest") } returns categoryProducts
-            every { cacheService.get(any()) } returns null
 
             // When
             val result = useCase.getProducts("의류", "newest")
@@ -96,20 +90,20 @@ class ProductUseCaseTest {
         }
 
         @Test
-        fun `캐시에서 상품을 가져올 수 있다`() {
+        fun `캐시 미스 시 DB에서 조회한다`() {
             // Given
-            val cachedProducts = listOf(
-                Product(id = 1L, name = "캐시된 상품", description = null, price = 50000L, category = "의류")
+            val products = listOf(
+                Product(id = 1L, name = "상품", description = null, price = 50000L, category = "의류")
             )
-            every { cacheService.get("products:all:newest") } returns cachedProducts
+            every { productRepository.findAll(null, "newest") } returns products
 
             // When
             val result = useCase.getProducts(null, "newest")
 
             // Then
             assertThat(result).hasSize(1)
-            assertThat(result[0].name).isEqualTo("캐시된 상품")
-            verify(exactly = 0) { productRepository.findAll(any(), any()) }
+            assertThat(result[0].name).isEqualTo("상품")
+            verify { productRepository.findAll(null, "newest") }
         }
     }
 
@@ -121,7 +115,7 @@ class ProductUseCaseTest {
             // Given
             val product = Product(id = 1L, name = "테스트", description = null, price = 50000L, category = "의류", viewCount = 0L)
             every { productRepository.findById(1L) } returns product
-            every { productRepository.save(product) } just runs
+            every { productRepository.save(product) } returns Unit
 
             // When
             val result = useCase.viewProduct(1L)
@@ -151,7 +145,7 @@ class ProductUseCaseTest {
             // Given
             val product = Product(id = 1L, name = "상품", description = null, price = 50000L, category = "의류", salesCount = 0L)
             every { productRepository.findById(1L) } returns product
-            every { productRepository.save(product) } just runs
+            every { productRepository.save(product) } returns Unit
 
             // When
             useCase.recordSale(1L, 5)
@@ -166,7 +160,7 @@ class ProductUseCaseTest {
             // Given
             val product = Product(id = 1L, name = "상품", description = null, price = 50000L, category = "의류", salesCount = 0L)
             every { productRepository.findById(1L) } returns product
-            every { productRepository.save(product) } just runs
+            every { productRepository.save(product) } returns Unit
 
             // When
             useCase.recordSale(1L, 3)

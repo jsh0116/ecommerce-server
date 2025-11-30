@@ -3,23 +3,40 @@ package io.hhplus.ecommerce.application.usecases
 import io.hhplus.ecommerce.domain.CouponValidationResult
 import io.hhplus.ecommerce.domain.UserCoupon
 import io.hhplus.ecommerce.exception.*
+import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
 import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
 import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import org.springframework.stereotype.Service
+import org.slf4j.LoggerFactory
 import java.time.LocalDateTime
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 @Service
 class CouponUseCase(
     private val couponRepository: CouponRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val distributedLockService: DistributedLockService
 ) {
-    private val couponLocks = ConcurrentHashMap<Long, Any>()
+    private val logger = LoggerFactory.getLogger(javaClass)
+    companion object {
+        private const val COUPON_LOCK_PREFIX = "coupon:lock:"
+    }
 
     fun issueCoupon(couponId: Long, userId: Long): CouponIssueResult {
-        val lockObject = couponLocks.computeIfAbsent(couponId) { Any() }
+        // First-Come-First-Served: 쿠폰별 세밀한 잠금
+        val lockKey = "$COUPON_LOCK_PREFIX$couponId"
+        val lockAcquired = distributedLockService.tryLock(
+            key = lockKey,
+            waitTime = 3L,  // 빠른 응답
+            holdTime = 10L,
+            unit = TimeUnit.SECONDS
+        )
 
-        synchronized(lockObject) {
+        if (!lockAcquired) {
+            throw CouponException.CouponLockTimeout("쿠폰 발급 대기 시간 초과")
+        }
+
+        try {
             val user = userRepository.findById(userId)
                 ?: throw UserException.UserNotFound(userId.toString())
 
@@ -54,6 +71,9 @@ class CouponUseCase(
                 expiresAt = userCoupon.expiresAt,
                 remainingQuantity = remainingQuantity
             )
+        } finally {
+            // 명시적 락 해제
+            distributedLockService.unlock(lockKey)
         }
     }
 

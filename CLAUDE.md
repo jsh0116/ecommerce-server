@@ -25,10 +25,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Running Tests
 ```bash
-./gradlew test                     # Run all tests
+./gradlew test                     # Run unit tests only (excludes integration tests)
+./gradlew testIntegration          # Run integration tests with @Tag("integration")
+./gradlew test testIntegration     # Run all tests (both unit and integration)
 ./gradlew test --tests "*ClassName*"  # Run specific test class
 ./gradlew test --tests "*ClassName*.*methodName*"  # Run specific test method
 ```
+
+**Test Types:**
+- **Unit Tests**: Fast, in-memory, no external dependencies (excluded by default from `./gradlew test`)
+- **Integration Tests**: Run with Docker/TestContainers for MySQL and Redis, tagged with `@Tag("integration")`
+- **Performance Tests**: Special tests tagged with `@Tag("performance")` for query optimization analysis
 
 ### Code Quality
 ```bash
@@ -41,12 +48,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 java -jar build/libs/hhplus-ecommerce-0.0.1-SNAPSHOT.jar  # Run compiled JAR
 ```
 
-### Docker
+### Docker & Local Development Environment
 ```bash
-docker-compose up --build          # Start application with Docker Compose
+docker-compose up --build          # Start full stack (App + MySQL + Redis + PostgreSQL)
+docker-compose up mysql redis      # Start only MySQL and Redis (lightweight)
 docker build -t hhplus-ecommerce:latest .  # Build Docker image
 docker run -p 8080:8080 hhplus-ecommerce:latest  # Run container
+
+# Check service health
+docker-compose ps                  # View running services
+docker logs hhplus-ecommerce-api   # View application logs
+docker logs hhplus-ecommerce-mysql # View database logs
 ```
+
+**Services in docker-compose.yml:**
+- **App**: Spring Boot application (port 8080)
+- **MySQL**: Primary database (port 3306, user: root, password: root)
+- **Redis**: Caching & distributed locking (port 6379)
+- **PostgreSQL**: Alternative database option (port 5432, user: hhplus_user, password: hhplus_password)
 
 ### Swagger UI
 ```bash
@@ -189,10 +208,36 @@ Tests should be placed in `src/test/kotlin/io/hhplus/ecommerce/` and follow the 
 ### Configuration
 
 - **Configuration File:** `src/main/resources/application.yml`
+- **Test Configuration:** `src/main/resources/application-test.yml` for integration tests with TestContainers
 - **Application Name:** hhplus-ecommerce
 - **Gradle Properties:** `gradle.properties` contains build settings and application metadata
   - Build caching and parallel builds enabled for faster builds
   - JVM max heap: 2GB
+
+### Redis & Distributed Locking
+
+The project uses **Redisson** for Redis-based distributed locking, particularly for concurrent coupon issuance:
+
+- **Lock Service:** `application/services/impl/RedissonCouponLockService.kt`
+- **Configuration:** Redis connection configured in `docker-compose.yml` (port 6379)
+- **Usage Pattern:** Fine-grained locks per coupon ID to prevent race conditions while maintaining concurrency for different coupons
+- **Timeout Handling:** Locks support configurable wait and hold times via `TimeUnit`
+
+**Key Components:**
+- `CouponLockService` interface for abstraction
+- `RedissonCouponLockService` implementation using Redisson client
+- Distributed locks ensure atomic check-then-act operations across server instances
+
+**Docker Setup for Local Development:**
+```yaml
+redis:
+  image: redis:7-alpine
+  container_name: hhplus-redis
+  ports:
+    - "6379:6379"
+```
+
+Start Redis with: `docker-compose up redis` or access full stack with `docker-compose up`
 
 ### Dependencies
 
@@ -344,11 +389,119 @@ data class OrderItem(...) {
 
 ## Testing Best Practices for This Project
 
-- Use MockK for mocking dependencies in unit tests
-- Use TestContainers for integration tests requiring database access
+### Unit Testing
+- Use MockK for mocking Spring dependencies (`mockk`, `mockk { coEvery }`)
 - Use FixtureMonkey to generate test data instead of manual object creation
 - Leverage AssertJ for readable, fluent assertions
 - Place unit tests alongside the code they test using the same package structure
 - Test domain entity business logic (e.g., `Order.canPay()`, `Product.hasStock()`)
 - Test use case orchestration with mock repositories
 - Write concurrency tests for critical sections (e.g., coupon issuance)
+
+### Integration Testing
+- **Base Class:** Extend `IntegrationTestBase` which applies `@ActiveProfiles("test")`
+- **TestContainers:** Automatically provision MySQL and Redis containers for tests
+- **Configuration:** `application-test.yml` enables Docker-based testing with dynamic port mapping
+- **Test Tags:** Use `@Tag("integration")` to mark tests that require external services
+- **Running:** `./gradlew testIntegration` runs only integration tests
+
+### Logging and Debugging in Tests
+- Use SLF4J Logger for test output instead of `println()`:
+```kotlin
+import org.slf4j.LoggerFactory
+
+class DatabaseIntegrationTest {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    @Test
+    fun testSomething() {
+        try {
+            // ... test code ...
+        } catch (e: Exception) {
+            logger.warn("테스트 중 예외 발생: {}", e.message, e)
+        }
+    }
+}
+```
+
+### JPA Persistence Context and Flush
+- When modifying entities and then querying with SQL/JPQL in the same `@Transactional` method, use `flush()`:
+```kotlin
+@Test
+fun testReservationExpiration() {
+    // Save changes to Persistence Context
+    val reservation = reservationRepository.findByOrderId(orderId)!!
+    reservation.expiresAt = LocalDateTime.now().minusHours(1)
+    reservationRepository.save(reservation)
+
+    // Flush: Write Persistence Context changes to database immediately
+    reservationRepository.flush()
+
+    // Query: Now the SQL query will see the updated data
+    val expiredCount = reservationService.expireReservations()
+    assertThat(expiredCount).isEqualTo(1)
+}
+```
+- **Why?** `save()` only updates the Persistence Context. SQL queries read directly from the database, so `flush()` is needed to sync.
+
+**Example Integration Test Setup:**
+```kotlin
+@SpringBootTest
+@Tag("integration")
+class OrderIntegrationTest : IntegrationTestBase {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    @Autowired private val orderService: OrderService
+    @Autowired private val orderRepository: OrderRepository
+
+    @Test
+    fun shouldCreateOrderAndReduceStock() {
+        // Test with real database and Redis via TestContainers
+        logger.info("테스트 시작: 주문 생성 및 재고 감소")
+    }
+}
+```
+
+### Performance & Query Optimization Tests
+- Tests tagged with `@Tag("performance")` analyze query execution plans
+- Use `EXPLAIN ANALYZE` for MySQL query optimization
+- Examples: `ExplainAnalysisTest`, `OrderRepositoryOptimizationTest`
+- These tests help identify N+1 queries and missing indexes
+
+## Database Layer & JPA Integration
+
+### Current State
+- **ORM Framework:** Spring Data JPA with Hibernate
+- **Primary Database:** MySQL 8.0 (configurable, see `application.yml`)
+- **Schema Management:** Hibernate DDL auto mode `validate` (production) / `create-drop` (testing)
+- **Dialect:** MySQL8Dialect in test environment
+- **Connection Pool:** HikariCP with configurable pool size
+
+### Key Configuration Settings
+**In `application.yml`:**
+- `hibernate.jdbc.lock_timeout`: 3000ms for pessimistic lock wait time
+- `hibernate.jdbc.batch_size`: 20 for batch inserts/updates
+- `hibernate.order_inserts/order_updates`: true for query optimization
+- `show-sql: false`, `open-in-view: false` for production safety
+
+**In `application-test.yml`:**
+- `create-drop` mode for clean test isolation
+- Dynamic datasource URLs via environment variables
+- HikariCP pool: max-pool-size=5, minimum-idle=2 for testing
+
+### Repository Pattern
+- **Interface Layer:** Service layer depends on repository interfaces (e.g., `OrderRepository`)
+- **Implementation:** Spring Data JPA repositories auto-implement CRUD operations
+- **Location:** `infrastructure/repositories/` for future implementations
+- **Query Methods:** Use Spring Data query derivation (e.g., `findByUserId`, `findByStatusAndCreatedAtAfter`)
+
+### Concurrency Control in Database Layer
+- **Pessimistic Locking:** `SELECT ... FOR UPDATE` with 3-second timeout (see `lock_timeout`)
+- **Optimistic Locking:** Version columns with `@Version` annotation for conflict detection
+- **Distributed Locks:** Redisson-based Redis locks for cross-JVM scenarios (coupon issuance)
+
+### Performance Considerations
+- **N+1 Query Prevention:** Use `@EntityGraph`, `JOIN FETCH`, or explicit projections
+- **Batch Operations:** Leverage HikariCP batch size settings for bulk inserts
+- **Indexing:** Ensure foreign keys and frequently queried columns have indexes
+- **Query Analysis:** Run `EXPLAIN ANALYZE` tests to verify query plans before production

@@ -1,19 +1,24 @@
 package io.hhplus.ecommerce.presentation.dto
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.hhplus.ecommerce.config.TestContainersConfig
+import io.hhplus.ecommerce.config.TestRedissonConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
+import org.springframework.test.context.ActiveProfiles
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("DTO 직렬화 테스트")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
-@org.springframework.test.context.ActiveProfiles("test")
+@ActiveProfiles("test")
+@Import(TestContainersConfig::class, TestRedissonConfig::class)
 class DtoSerializationTest {
 
     @Autowired

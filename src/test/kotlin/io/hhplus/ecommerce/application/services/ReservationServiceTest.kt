@@ -22,6 +22,7 @@ class ReservationServiceTest {
 
     private val reservationRepository = mockk<ReservationJpaRepository>()
     private val inventoryRepository = mockk<InventoryJpaRepository>()
+    // Spring Cache 어노테이션을 사용하므로 CacheService는 제거
     private val inventoryService = InventoryService(inventoryRepository)
     private val service = ReservationService(reservationRepository, inventoryService)
 

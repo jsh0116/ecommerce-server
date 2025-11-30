@@ -13,6 +13,7 @@ spring:
         use_sql_comments: true
         jdbc:
           batch_size: 20
+          lock_timeout: 3000
         order_inserts: true
         order_updates: true
 
@@ -26,8 +27,18 @@ spring:
       maximum-pool-size: 5
       minimum-idle: 2
 
+  # Redis 설정 (TestContainers Redis 사용 - 동적 포트)
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    timeout: 2000
+
 # Logging Configuration for Tests
 logging:
   level:
     root: INFO
-    io.hhplus.ecommerce: DEBUG
+    io.hhplus.ecommerce: INFO
+    io.hhplus.ecommerce.infrastructure.cache: WARN
+    io.hhplus.ecommerce.application.services.InventoryService: WARN
+    org.redisson: WARN
+    org.springframework.data.redis.repository.configuration: ERROR  # Redis Repository 경고 제거

@@ -13,6 +13,7 @@ junit = "5.9.3"
 assertj = "3.24.2"
 test_containers = "1.19.3"
 fixture_monkey = "1.0.13"
+awaitility = "4.0.3"
 
 [plugins]
 kotlin_jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
@@ -37,6 +38,7 @@ spring_boot_starter_test = { module = "org.springframework.boot:spring-boot-star
 spring_boot_testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 test_containers_junit_jupiter = { module = "org.testcontainers:junit-jupiter" }
 test_containers_mysql = { module = "org.testcontainers:mysql" }
+test_containers_redis = { module = "org.testcontainers:testcontainers" }
 
 fixture_monkey_starter_kotlin = { module = "com.navercorp.fixturemonkey:fixture-monkey-starter-kotlin", version.ref = "fixture_monkey" }
 
@@ -51,5 +53,6 @@ micrometer_registry_prometheus = { module = "io.micrometer:micrometer-registry-p
 # test
 assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 spring_mockk = { module = "com.ninja-squad:springmockk", version.ref = "spring_mockk" }
+awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
 [bundles]
 testcontainers_mysql = ["test_containers_mysql", "spring_boot_testcontainers", "test_containers_junit_jupiter","spring_boot_starter_test"]

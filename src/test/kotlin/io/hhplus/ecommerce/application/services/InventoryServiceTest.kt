@@ -5,9 +5,7 @@ import io.hhplus.ecommerce.exception.InventoryException
 import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
-import io.mockk.runs
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy

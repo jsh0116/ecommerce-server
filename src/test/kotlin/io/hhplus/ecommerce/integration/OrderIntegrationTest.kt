@@ -1,5 +1,7 @@
 package io.hhplus.ecommerce.integration
 
+import io.hhplus.ecommerce.config.TestContainersConfig
+import io.hhplus.ecommerce.config.TestRedissonConfig
 import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderJpaStatus
 import io.hhplus.ecommerce.infrastructure.persistence.repository.OrderJpaRepository
@@ -9,16 +11,20 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
+import org.springframework.test.context.ActiveProfiles
 import java.time.LocalDateTime
 
 /**
  * Order 통합 테스트 (실제 MySQL 데이터베이스 사용)
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
 @DisplayName("Order 통합 테스트")
+@ActiveProfiles("test")
+@Import(TestContainersConfig::class, TestRedissonConfig::class)
 class OrderIntegrationTest : IntegrationTestBase() {
 
     @Autowired
