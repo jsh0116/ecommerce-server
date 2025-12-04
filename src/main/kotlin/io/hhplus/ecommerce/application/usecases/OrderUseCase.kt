@@ -1,6 +1,7 @@
 package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.application.events.OrderPaidEvent
+import io.hhplus.ecommerce.application.services.ProductRankingService
 import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.domain.OrderItem
 import io.hhplus.ecommerce.domain.UserCoupon
@@ -30,6 +31,7 @@ class OrderUseCase(
     private val couponRepository: CouponRepository,
     private val inventoryRepository: InventoryRepository,
     private val productUseCase: ProductUseCase,
+    private val productRankingService: ProductRankingService,
     private val eventPublisher: ApplicationEventPublisher
 ) {
     /**
@@ -205,6 +207,9 @@ class OrderUseCase(
 
             // 판매량 증가 (인기 상품 집계용)
             productUseCase.recordSale(item.productId, item.quantity)
+
+            // Redis 기반 실시간 랭킹 업데이트 (STEP 13)
+            productRankingService.incrementSales(item.productId, item.quantity)
         }
 
         // 쿠폰 사용 처리

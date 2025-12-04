@@ -7,6 +7,7 @@ import io.hhplus.ecommerce.presentation.dto.ProductListResponse
 import io.hhplus.ecommerce.presentation.dto.ProductVariantDto
 import io.hhplus.ecommerce.application.usecases.ProductUseCase
 import io.hhplus.ecommerce.application.usecases.InventoryUseCase
+import io.hhplus.ecommerce.application.services.ProductRankingService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -25,7 +26,8 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "Products", description = "상품 API")
 class ProductController(
     private val productUseCase: ProductUseCase,
-    private val inventoryUseCase: InventoryUseCase
+    private val inventoryUseCase: InventoryUseCase,
+    private val productRankingService: ProductRankingService
 ) {
 
     @GetMapping
@@ -356,4 +358,156 @@ class ProductController(
             )
         )
     }
+
+    // ===== STEP 13: Redis 기반 실시간 랭킹 API =====
+
+    @GetMapping("/ranking/daily")
+    @Operation(
+        summary = "일간 인기 상품 랭킹 조회 (STEP 13)",
+        description = "Redis Sorted Set 기반 실시간 일간 판매 랭킹을 조회합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "조회 성공"
+            )
+        ]
+    )
+    fun getDailyRanking(
+        @Parameter(
+            name = "limit",
+            description = "조회할 상품 수 (기본값: 10)",
+            example = "10"
+        )
+        @RequestParam(defaultValue = "10") limit: Int
+    ): ResponseEntity<ProductRankingResponse> {
+        val rankings = productRankingService.getTopProductsDaily(limit)
+
+        return ResponseEntity.ok(
+            ProductRankingResponse(
+                type = "daily",
+                rankings = rankings.map {
+                    ProductRankingItemDto(
+                        rank = it.rank,
+                        productId = it.productId,
+                        productName = it.productName,
+                        salesCount = it.salesCount,
+                        price = it.product.price,
+                        category = it.product.category
+                    )
+                }
+            )
+        )
+    }
+
+    @GetMapping("/ranking/weekly")
+    @Operation(
+        summary = "주간 인기 상품 랭킹 조회 (STEP 13)",
+        description = "Redis Sorted Set 기반 실시간 주간 판매 랭킹을 조회합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "조회 성공"
+            )
+        ]
+    )
+    fun getWeeklyRanking(
+        @Parameter(
+            name = "limit",
+            description = "조회할 상품 수 (기본값: 10)",
+            example = "10"
+        )
+        @RequestParam(defaultValue = "10") limit: Int
+    ): ResponseEntity<ProductRankingResponse> {
+        val rankings = productRankingService.getTopProductsWeekly(limit)
+
+        return ResponseEntity.ok(
+            ProductRankingResponse(
+                type = "weekly",
+                rankings = rankings.map {
+                    ProductRankingItemDto(
+                        rank = it.rank,
+                        productId = it.productId,
+                        productName = it.productName,
+                        salesCount = it.salesCount,
+                        price = it.product.price,
+                        category = it.product.category
+                    )
+                }
+            )
+        )
+    }
+
+    @GetMapping("/{productId}/rank")
+    @Operation(
+        summary = "특정 상품 순위 조회 (STEP 13)",
+        description = "특정 상품의 일간/주간 판매 순위를 조회합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "조회 성공"
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "상품을 찾을 수 없음"
+            )
+        ]
+    )
+    fun getProductRank(
+        @Parameter(
+            name = "productId",
+            description = "상품 ID",
+            example = "1"
+        )
+        @PathVariable productId: String
+    ): ResponseEntity<ProductRankResponse> {
+        val productIdLong = productId.toLongOrNull()
+            ?: return ResponseEntity.notFound().build()
+
+        val product = productUseCase.getProductById(productIdLong)
+            ?: return ResponseEntity.notFound().build()
+
+        val dailyRank = productRankingService.getProductRankDaily(productIdLong)
+        val weeklyRank = productRankingService.getProductRankWeekly(productIdLong)
+        val salesCount = productRankingService.getProductSalesCount(productIdLong)
+
+        return ResponseEntity.ok(
+            ProductRankResponse(
+                productId = productIdLong,
+                productName = product.name,
+                dailyRank = dailyRank,
+                weeklyRank = weeklyRank,
+                salesCount = salesCount
+            )
+        )
+    }
+
+    // ===== DTO for Ranking APIs =====
+
+    data class ProductRankingResponse(
+        val type: String,  // "daily" or "weekly"
+        val rankings: List<ProductRankingItemDto>
+    )
+
+    data class ProductRankingItemDto(
+        val rank: Int,
+        val productId: Long,
+        val productName: String,
+        val salesCount: Long,
+        val price: Long,
+        val category: String
+    )
+
+    data class ProductRankResponse(
+        val productId: Long,
+        val productName: String,
+        val dailyRank: Int?,
+        val weeklyRank: Int?,
+        val salesCount: Long
+    )
 }

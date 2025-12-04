@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.ProductRankingService
 import io.hhplus.ecommerce.domain.Inventory
 import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.domain.OrderItem
@@ -37,11 +38,13 @@ class OrderUseCaseTest {
     private val couponRepository = mockk<CouponRepository>()
     private val inventoryRepository = mockk<InventoryRepository>()
     private val productUseCase = mockk<ProductUseCase>()
+    private val productRankingService = mockk<ProductRankingService>(relaxed = true)
     private val eventPublisher = mockk<ApplicationEventPublisher>(relaxed = true)
 
     private val useCase = OrderUseCase(
         orderRepository, productRepository, userRepository,
-        couponRepository, inventoryRepository, productUseCase, eventPublisher
+        couponRepository, inventoryRepository, productUseCase,
+        productRankingService, eventPublisher
     )
 
     @Nested

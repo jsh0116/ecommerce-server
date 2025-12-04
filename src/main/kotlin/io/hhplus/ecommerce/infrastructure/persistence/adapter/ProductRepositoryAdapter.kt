@@ -29,6 +29,11 @@ class ProductRepositoryAdapter(
         return entities.map { it.toDomain() }
     }
 
+    override fun findAllById(ids: List<Long>): List<Product> {
+        val entities = jpaRepository.findAllById(ids)
+        return entities.map { it.toDomain() }
+    }
+
     override fun findTopSelling(startTimestamp: Long, limit: Int): List<Product> {
         val entities = jpaRepository.findTopSellingProducts(limit)
         return entities.map { it.toDomain() }
