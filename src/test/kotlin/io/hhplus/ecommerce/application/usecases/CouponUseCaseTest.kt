@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.CouponIssuanceService
 import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
 import io.hhplus.ecommerce.domain.Coupon
 import io.hhplus.ecommerce.domain.CouponType
@@ -28,7 +29,8 @@ class CouponUseCaseTest {
     private val couponRepository = mockk<CouponRepository>()
     private val userRepository = mockk<UserRepository>()
     private val distributedLockService = mockk<DistributedLockService>()
-    private val useCase = CouponUseCase(couponRepository, userRepository, distributedLockService)
+    private val couponIssuanceService = mockk<CouponIssuanceService>(relaxed = true)
+    private val useCase = CouponUseCase(couponRepository, userRepository, distributedLockService, couponIssuanceService)
 
     @Nested
     @DisplayName("쿠폰 발급 테스트")

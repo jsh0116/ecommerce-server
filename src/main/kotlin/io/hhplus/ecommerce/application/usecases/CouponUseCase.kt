@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.CouponIssuanceService
 import io.hhplus.ecommerce.domain.CouponValidationResult
 import io.hhplus.ecommerce.domain.UserCoupon
 import io.hhplus.ecommerce.exception.*
@@ -15,7 +16,8 @@ import java.util.concurrent.TimeUnit
 class CouponUseCase(
     private val couponRepository: CouponRepository,
     private val userRepository: UserRepository,
-    private val distributedLockService: DistributedLockService
+    private val distributedLockService: DistributedLockService,
+    private val couponIssuanceService: CouponIssuanceService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
     companion object {
@@ -23,11 +25,21 @@ class CouponUseCase(
     }
 
     fun issueCoupon(couponId: Long, userId: Long): CouponIssueResult {
-        // First-Come-First-Served: 쿠폰별 세밀한 잠금
+        // Redis 사전 체크 (Lock 없이 빠르게 실패)
+        try {
+            couponIssuanceService.checkIssuanceEligibility(couponId, userId)
+        } catch (e: BusinessRuleViolationException) {
+            logger.info("쿠폰 발급 사전 체크 실패: couponId={}, userId={}, reason={}", couponId, userId, e.message)
+            throw e
+        } catch (e: ResourceNotFoundException) {
+            logger.info("쿠폰 발급 사전 체크 실패: couponId={}, userId={}, reason={}", couponId, userId, e.message)
+            throw e
+        }
+
         val lockKey = "$COUPON_LOCK_PREFIX$couponId"
         val lockAcquired = distributedLockService.tryLock(
             key = lockKey,
-            waitTime = 3L,  // 빠른 응답
+            waitTime = 3L,
             holdTime = 10L,
             unit = TimeUnit.SECONDS
         )
@@ -37,11 +49,10 @@ class CouponUseCase(
         }
 
         try {
+            couponIssuanceService.checkIssuanceEligibility(couponId, userId)
+
             val user = userRepository.findById(userId)
                 ?: throw UserException.UserNotFound(userId.toString())
-
-            val existing = couponRepository.findUserCouponByCouponId(userId, couponId)
-            if (existing != null) throw CouponException.AlreadyIssuedCoupon()
 
             val coupon = couponRepository.findById(couponId)
                 ?: throw CouponException.CouponNotFound(couponId.toString())
@@ -64,12 +75,17 @@ class CouponUseCase(
 
             couponRepository.saveUserCoupon(userCoupon)
 
+            // STEP 14: Redis에 발급 기록 (DB 저장 성공 후)
+            val remaining = couponIssuanceService.recordIssuance(couponId, userId)
+
+            logger.info("쿠폰 발급 성공: couponId={}, userId={}, remaining={}", couponId, userId, remaining)
+
             return CouponIssueResult(
                 userCouponId = couponId,
                 couponName = userCoupon.couponName,
                 discountRate = userCoupon.discountRate,
                 expiresAt = userCoupon.expiresAt,
-                remainingQuantity = remainingQuantity
+                remainingQuantity = remaining.toInt()
             )
         } finally {
             // 명시적 락 해제
