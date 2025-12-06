@@ -17,6 +17,11 @@ interface ProductRepository {
     fun findAll(category: String?, sort: String): List<Product>
 
     /**
+     * 여러 상품 ID로 조회 (STEP 13: 랭킹 조회용)
+     */
+    fun findAllById(ids: List<Long>): List<Product>
+
+    /**
      * 인기 상품 조회
      */
     fun findTopSelling(startTimestamp: Long, limit: Int): List<Product>

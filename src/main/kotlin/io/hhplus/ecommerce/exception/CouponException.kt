@@ -38,4 +38,9 @@ object CouponException {
         errorCode = "COUPON_LOCK_TIMEOUT",
         message = message
     )
+
+    class CouponIssuanceFailed(message: String = "쿠폰 발급 요청 실패") : BusinessRuleViolationException(
+        errorCode = "COUPON_ISSUANCE_FAILED",
+        message = message
+    )
 }

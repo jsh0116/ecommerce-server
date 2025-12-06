@@ -1,13 +1,13 @@
 package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.application.events.OrderPaidEvent
+import io.hhplus.ecommerce.application.services.ProductRankingService
 import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.domain.OrderItem
-import io.hhplus.ecommerce.domain.UserCoupon
-import io.hhplus.ecommerce.infrastructure.repositories.OrderRepository
-import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
-import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
-import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
+import io.hhplus.ecommerce.application.services.OrderService
+import io.hhplus.ecommerce.application.services.ProductService
+import io.hhplus.ecommerce.application.services.UserService
+import io.hhplus.ecommerce.application.services.CouponService
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import io.hhplus.ecommerce.exception.*
 import org.springframework.context.ApplicationEventPublisher
@@ -24,12 +24,13 @@ import java.util.UUID
  */
 @Service
 class OrderUseCase(
-    private val orderRepository: OrderRepository,
-    private val productRepository: ProductRepository,
-    private val userRepository: UserRepository,
-    private val couponRepository: CouponRepository,
+    private val orderService: OrderService,
+    private val productService: ProductService,
+    private val userService: UserService,
+    private val couponService: CouponService,
     private val inventoryRepository: InventoryRepository,
     private val productUseCase: ProductUseCase,
+    private val productRankingService: ProductRankingService,
     private val eventPublisher: ApplicationEventPublisher
 ) {
     /**
@@ -41,14 +42,12 @@ class OrderUseCase(
         couponId: Long?
     ): Order {
         // 사용자 확인
-        val user = userRepository.findById(userId)
-            ?: throw UserException.UserNotFound(userId.toString())
+        val user = userService.getById(userId)
 
         // 상품 및 재고 확인
         val orderItems = mutableListOf<OrderItem>()
         for (req in items) {
-            val product = productRepository.findById(req.productId)
-                ?: throw ProductException.ProductNotFound(req.productId.toString())
+            val product = productService.getById(req.productId)
 
             // 재고 확인 (Product ID를 SKU로 사용)
             val inventory = inventoryRepository.findBySku(product.id.toString())
@@ -66,91 +65,46 @@ class OrderUseCase(
         }
 
         // 쿠폰 확인
-        var userCoupon: UserCoupon? = null
-        if (couponId != null) {
-            userCoupon = couponRepository.findUserCoupon(userId, couponId)
-            if (userCoupon == null || !userCoupon.isValid()) {
-                throw CouponException.InvalidCoupon()
-            }
-        }
+        val userCoupon = couponId?.let { couponService.validateUserCoupon(userId, it) }
 
         // 주문 생성
-        val totalAmount = orderItems.sumOf { it.subtotal }
-        val discount = if (userCoupon != null) {
-            (totalAmount * userCoupon.discountRate / 100.0).toLong()
-        } else {
-            0L
-        }
-        val finalAmount = totalAmount - discount
-
-        val order = Order(
-            id = System.currentTimeMillis(),
-            userId = userId,
-            items = orderItems,
-            totalAmount = totalAmount,
-            discountAmount = discount,
-            finalAmount = finalAmount,
-            couponId = couponId
-        )
-
-        return orderRepository.save(order)
+        return orderService.createOrder(user, orderItems, userCoupon)
     }
 
     /**
      * 주문 조회
      */
     fun getOrderById(orderId: Long): Order? {
-        return orderRepository.findById(orderId)
+        return try {
+            orderService.getById(orderId)
+        } catch (e: OrderException.OrderNotFound) {
+            null
+        }
     }
 
     /**
      * 사용자 주문 목록 조회
      */
     fun getOrdersByUserId(userId: Long): List<Order> {
-        return orderRepository.findByUserId(userId)
+        return orderService.getByUserId(userId)
     }
 
     /**
      * 주문 상태 업데이트
      */
     fun updateOrderStatus(orderId: Long, newStatus: String): Order? {
-        val order = orderRepository.findById(orderId) ?: return null
-
-        // Order 도메인에 상태 변경 메서드가 있다면 사용
-        when (newStatus) {
-            "CANCELLED" -> {
-                if (order.canCancel()) {
-                    order.cancel()
-                } else {
-                    throw OrderException.CannotCancelOrder(order.status)
-                }
-            }
-            else -> {
-                // 일반적인 상태 업데이트
-                order.status = newStatus
-            }
+        return try {
+            orderService.updateOrderStatus(orderId, newStatus)
+        } catch (e: OrderException.OrderNotFound) {
+            null
         }
-
-        return orderRepository.save(order)
     }
 
     /**
      * 주문 취소 및 재고 복구
      */
     fun cancelOrder(orderId: Long, userId: Long): Order {
-        val order = orderRepository.findById(orderId)
-            ?: throw OrderException.OrderNotFound(orderId.toString())
-
-        if (order.userId != userId) {
-            throw OrderException.UnauthorizedOrderAccess()
-        }
-
-        if (!order.canCancel()) {
-            throw OrderException.CannotCancelOrder(order.status)
-        }
-
-        // 주문 취소
-        order.cancel()
+        val order = orderService.cancelOrder(orderId, userId)
 
         // 재고 복구
         for (item in order.items) {
@@ -161,7 +115,7 @@ class OrderUseCase(
             }
         }
 
-        return orderRepository.save(order)
+        return order
     }
 
     /**
@@ -169,8 +123,7 @@ class OrderUseCase(
      */
     fun processPayment(orderId: Long, userId: Long): PaymentResult {
         // 주문 확인
-        val order = orderRepository.findById(orderId)
-            ?: throw OrderException.OrderNotFound(orderId.toString())
+        val order = orderService.getById(orderId)
 
         if (order.userId != userId) {
             throw OrderException.UnauthorizedOrderAccess()
@@ -180,19 +133,8 @@ class OrderUseCase(
             throw OrderException.CannotPayOrder()
         }
 
-        // 잔액 확인 및 차감
-        val user = userRepository.findById(userId)
-            ?: throw UserException.UserNotFound(userId.toString())
-
-        if (user.balance < order.finalAmount) {
-            throw UserException.InsufficientBalance(
-                required = order.finalAmount,
-                current = user.balance
-            )
-        }
-
-        user.balance = user.balance - order.finalAmount
-        userRepository.save(user)
+        // 잔액 차감
+        val user = userService.deductBalance(userId, order.finalAmount)
 
         // 재고 차감 및 판매량 증가 (Product ID를 SKU로 사용)
         for (item in order.items) {
@@ -205,30 +147,27 @@ class OrderUseCase(
 
             // 판매량 증가 (인기 상품 집계용)
             productUseCase.recordSale(item.productId, item.quantity)
+
+            // Redis 기반 실시간 랭킹 업데이트 (STEP 13)
+            productRankingService.incrementSales(item.productId, item.quantity)
         }
 
         // 쿠폰 사용 처리
         if (order.couponId != null) {
-            val userCoupon = couponRepository.findUserCoupon(userId, order.couponId)
-            if (userCoupon != null) {
-                userCoupon.use()
-                couponRepository.saveUserCoupon(userCoupon)
-            }
+            val userCoupon = couponService.validateUserCoupon(userId, order.couponId)
+            couponService.useCoupon(userCoupon)
         }
 
         // 주문 완료 처리
-        order.complete()
-        orderRepository.save(order)
+        val completedOrder = orderService.completeOrder(orderId)
 
         // 주문 결제 완료 이벤트 발행 (비동기 처리)
-        // OrderPaidEventListener에서 비동기로 외부 데이터 전송을 처리합니다.
-        // DB 트랜잭션 완료 후 별도의 스레드에서 실행되므로 트랜잭션 내 네트워크 대기가 없습니다.
-        eventPublisher.publishEvent(OrderPaidEvent.from(order))
+        eventPublisher.publishEvent(OrderPaidEvent.from(completedOrder))
 
         // 결제 결과 반환
         return PaymentResult(
-            orderId = order.id,
-            paidAmount = order.finalAmount,
+            orderId = completedOrder.id,
+            paidAmount = completedOrder.finalAmount,
             remainingBalance = user.balance,
             status = "SUCCESS"
         )
