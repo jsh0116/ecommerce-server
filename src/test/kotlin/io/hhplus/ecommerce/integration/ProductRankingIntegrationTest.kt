@@ -150,10 +150,10 @@ class ProductRankingIntegrationTest : IntegrationTestBase() {
             productRankingService.incrementSales(testProducts[4].id, 300)
 
             // When
-            val topProducts = productRankingService.getTopProductsDaily(limit = 5)
+            val topProducts = productRankingService.getTopProductIdsDaily(limit = 5)
 
             // Then
-            assertThat(topProducts).hasSize(5)
+            assertThat(topProducts.size).isEqualTo(5)
             assertThat(topProducts[0].rank).isEqualTo(1)
             assertThat(topProducts[0].productId).isEqualTo(testProducts[4].id)
             assertThat(topProducts[0].salesCount).isEqualTo(300L)
@@ -170,10 +170,10 @@ class ProductRankingIntegrationTest : IntegrationTestBase() {
         @Test
         fun `판매 이력이 없으면 빈 리스트를 반환한다`() {
             // When
-            val topProducts = productRankingService.getTopProductsDaily(limit = 10)
+            val topProducts = productRankingService.getTopProductIdsDaily(limit = 10)
 
             // Then
-            assertThat(topProducts).isEmpty()
+            assertThat(topProducts.size).isEqualTo(0)
         }
 
         @Test
@@ -183,10 +183,10 @@ class ProductRankingIntegrationTest : IntegrationTestBase() {
             productRankingService.incrementSales(testProducts[1].id, 200)
 
             // When
-            val topProducts = productRankingService.getTopProductsDaily(limit = 10)
+            val topProducts = productRankingService.getTopProductIdsDaily(limit = 10)
 
             // Then
-            assertThat(topProducts).hasSize(2)
+            assertThat(topProducts.size).isEqualTo(2)
         }
     }
 
@@ -234,10 +234,10 @@ class ProductRankingIntegrationTest : IntegrationTestBase() {
             productRankingService.incrementSales(testProducts[2].id, 1500)
 
             // When
-            val topProducts = productRankingService.getTopProductsWeekly(limit = 5)
+            val topProducts = productRankingService.getTopProductIdsWeekly(limit = 5)
 
             // Then
-            assertThat(topProducts).hasSize(3)
+            assertThat(topProducts.size).isEqualTo(3)
             assertThat(topProducts[0].productId).isEqualTo(testProducts[1].id)
             assertThat(topProducts[1].productId).isEqualTo(testProducts[2].id)
             assertThat(topProducts[2].productId).isEqualTo(testProducts[0].id)

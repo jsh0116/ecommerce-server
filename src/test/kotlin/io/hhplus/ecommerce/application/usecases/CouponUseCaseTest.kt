@@ -1,9 +1,9 @@
 package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.application.services.CouponIssuanceService
+import io.hhplus.ecommerce.application.services.CouponIssuanceQueueService
 import io.hhplus.ecommerce.application.services.CouponService
 import io.hhplus.ecommerce.application.services.UserService
-import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
 import io.hhplus.ecommerce.domain.Coupon
 import io.hhplus.ecommerce.domain.CouponType
 import io.hhplus.ecommerce.domain.User
@@ -21,30 +21,23 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
-import java.util.concurrent.TimeUnit
 
-@DisplayName("CouponUseCase 테스트")
+@DisplayName("CouponUseCase 테스트 (비동기 방식)")
 class CouponUseCaseTest {
 
     private val couponService = mockk<CouponService>()
     private val userService = mockk<UserService>()
-    private val distributedLockService = mockk<DistributedLockService>()
     private val couponIssuanceService = mockk<CouponIssuanceService>(relaxed = true)
-    private val useCase = CouponUseCase(couponService, userService, distributedLockService, couponIssuanceService)
+    private val couponIssuanceQueueService = mockk<CouponIssuanceQueueService>(relaxed = true)
+    private val useCase = CouponUseCase(couponService, userService, couponIssuanceService, couponIssuanceQueueService)
 
     @Nested
-    @DisplayName("쿠폰 발급 테스트")
+    @DisplayName("쿠폰 발급 요청 테스트 (비동기)")
     inner class IssueCouponTest {
-        private fun setupLockMock() {
-            every { distributedLockService.tryLock(key = any(), waitTime = 3L, holdTime = 10L, unit = TimeUnit.SECONDS) } returns true
-            every { distributedLockService.unlock(any()) } just runs
-        }
 
         @Test
-        fun `쿠폰을 발급할 수 있다`() {
+        fun `쿠폰 발급 요청을 대기열에 추가할 수 있다`() {
             // Given
-            setupLockMock()
-            val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
             val coupon = Coupon(
                 id = 1L, code = "COUPON-001", name = "테스트 쿠폰",
                 type = CouponType.FIXED_AMOUNT, discount = 5000L, discountRate = 10,
@@ -52,11 +45,17 @@ class CouponUseCaseTest {
                 startDate = LocalDateTime.now().minusDays(1),
                 endDate = LocalDateTime.now().plusDays(7)
             )
+            val status = CouponIssuanceService.CouponStatus(
+                couponId = 1L,
+                totalQuantity = 100,
+                issuedCount = 50,
+                remainingQuantity = 50
+            )
 
-            every { userService.getById(1L) } returns user
+            every { couponIssuanceService.checkIssuanceEligibility(1L, 1L) } just runs
             every { couponService.getById(1L) } returns coupon
-            every { couponService.save(coupon) } just runs
-            every { couponService.saveUserCoupon(any()) } just runs
+            every { couponIssuanceService.getCouponStatus(1L) } returns status
+            every { couponIssuanceQueueService.enqueue(any()) } returns true
 
             // When
             val result = useCase.issueCoupon(1L, 1L)
@@ -65,32 +64,16 @@ class CouponUseCaseTest {
             assertThat(result).isNotNull
             assertThat(result.couponName).isEqualTo("테스트 쿠폰")
             assertThat(result.discountRate).isEqualTo(10)
-            verify { couponService.save(coupon) }
-            verify { couponService.saveUserCoupon(any()) }
-        }
-
-        @Test
-        fun `존재하지 않는 사용자는 예외를 발생시킨다`() {
-            // Given
-            setupLockMock()
-            every { userService.getById(999L) } throws UserException.UserNotFound("999")
-
-            // When/Then
-            assertThatThrownBy {
-                useCase.issueCoupon(1L, 999L)
-            }.isInstanceOf(UserException.UserNotFound::class.java)
+            assertThat(result.status).isEqualTo("PENDING")
+            assertThat(result.requestId).isNotNull
+            assertThat(result.remainingQuantity).isEqualTo(50)
+            verify { couponIssuanceQueueService.enqueue(any()) }
         }
 
         @Test
         fun `이미 발급받은 쿠폰은 예외를 발생시킨다`() {
             // Given
-            setupLockMock()
-            val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
-            val userCoupon = UserCoupon(userId = 1L, couponId = 1L, couponName = "이미 발급됨", discountRate = 10)
-
             every { couponIssuanceService.checkIssuanceEligibility(1L, 1L) } throws CouponException.AlreadyIssuedCoupon()
-            every { userService.getById(1L) } returns user
-            every { couponService.validateUserCoupon(1L, 1L) } returns userCoupon
 
             // When/Then
             assertThatThrownBy {
@@ -99,13 +82,20 @@ class CouponUseCaseTest {
         }
 
         @Test
+        fun `쿠폰이 모두 소진되면 예외를 발생시킨다`() {
+            // Given
+            every { couponIssuanceService.checkIssuanceEligibility(1L, 1L) } throws CouponException.CouponExhausted()
+
+            // When/Then
+            assertThatThrownBy {
+                useCase.issueCoupon(1L, 1L)
+            }.isInstanceOf(CouponException.CouponExhausted::class.java)
+        }
+
+        @Test
         fun `존재하지 않는 쿠폰은 예외를 발생시킨다`() {
             // Given
-            setupLockMock()
-            val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
-
-            every { userService.getById(1L) } returns user
-            every { couponService.getById(999L) } throws CouponException.CouponNotFound("999")
+            every { couponIssuanceService.checkIssuanceEligibility(999L, 1L) } throws CouponException.CouponNotFound("999")
 
             // When/Then
             assertThatThrownBy {
@@ -114,69 +104,29 @@ class CouponUseCaseTest {
         }
 
         @Test
-        fun `쿠폰이 모두 소진되면 예외를 발생시킨다`() {
+        fun `대기열 추가 실패 시 예외를 발생시킨다`() {
             // Given
-            setupLockMock()
-            val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
             val coupon = Coupon(
-                id = 1L, code = "COUPON-001", name = "소진된 쿠폰",
+                id = 1L, code = "COUPON-001", name = "테스트 쿠폰",
                 type = CouponType.FIXED_AMOUNT, discount = 5000L, discountRate = 10,
-                totalQuantity = 100, issuedQuantity = 100, // 모두 소진됨
+                totalQuantity = 100, issuedQuantity = 0,
                 startDate = LocalDateTime.now().minusDays(1),
                 endDate = LocalDateTime.now().plusDays(7)
             )
-
-            every { userService.getById(1L) } returns user
-            every { couponService.getById(1L) } returns coupon
-
-            // When/Then
-            assertThatThrownBy {
-                useCase.issueCoupon(1L, 1L)
-            }.isInstanceOf(CouponException.CouponExhausted::class.java)
-        }
-
-        @Test
-        fun `만료된 쿠폰은 발급할 수 없다`() {
-            // Given
-            setupLockMock()
-            val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
-            val coupon = Coupon(
-                id = 1L, code = "COUPON-001", name = "만료된 쿠폰",
-                type = CouponType.FIXED_AMOUNT, discount = 5000L, discountRate = 10,
-                totalQuantity = 100, issuedQuantity = 0,
-                startDate = LocalDateTime.now().minusDays(10),
-                endDate = LocalDateTime.now().minusDays(1) // 이미 만료됨
+            val status = CouponIssuanceService.CouponStatus(
+                couponId = 1L, totalQuantity = 100, issuedCount = 50, remainingQuantity = 50
             )
 
-            every { userService.getById(1L) } returns user
+            every { couponIssuanceService.checkIssuanceEligibility(1L, 1L) } just runs
             every { couponService.getById(1L) } returns coupon
+            every { couponIssuanceService.getCouponStatus(1L) } returns status
+            every { couponIssuanceQueueService.enqueue(any()) } returns false // 대기열 추가 실패
 
             // When/Then
             assertThatThrownBy {
                 useCase.issueCoupon(1L, 1L)
-            }.isInstanceOf(CouponException.CouponExhausted::class.java)
-        }
-
-        @Test
-        fun `아직 시작하지 않은 쿠폰은 발급할 수 없다`() {
-            // Given
-            setupLockMock()
-            val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
-            val coupon = Coupon(
-                id = 1L, code = "COUPON-001", name = "미시작 쿠폰",
-                type = CouponType.FIXED_AMOUNT, discount = 5000L, discountRate = 10,
-                totalQuantity = 100, issuedQuantity = 0,
-                startDate = LocalDateTime.now().plusDays(1), // 아직 시작 안 됨
-                endDate = LocalDateTime.now().plusDays(7)
-            )
-
-            every { userService.getById(1L) } returns user
-            every { couponService.getById(1L) } returns coupon
-
-            // When/Then
-            assertThatThrownBy {
-                useCase.issueCoupon(1L, 1L)
-            }.isInstanceOf(CouponException.CouponExhausted::class.java)
+            }.isInstanceOf(CouponException.CouponIssuanceFailed::class.java)
+                .hasMessageContaining("대기열 추가 오류")
         }
     }
 

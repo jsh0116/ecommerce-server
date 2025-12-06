@@ -1,9 +1,11 @@
 package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.application.services.ProductService
+import io.hhplus.ecommerce.application.services.ProductRankingService
 import io.hhplus.ecommerce.domain.Inventory
 import io.hhplus.ecommerce.domain.Product
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
+import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -19,8 +21,9 @@ class ProductUseCaseTest {
 
     private val productService = mockk<ProductService>()
     private val inventoryRepository = mockk<InventoryRepository>()
-    // Spring Cache 어노테이션을 사용하므로 CacheService는 제거
-    private val useCase = ProductUseCase(productService, inventoryRepository)
+    private val productRepository = mockk<ProductRepository>(relaxed = true)
+    private val productRankingService = mockk<ProductRankingService>(relaxed = true)
+    private val useCase = ProductUseCase(productService, inventoryRepository, productRepository, productRankingService)
 
     @Nested
     @DisplayName("상품 조회 테스트")
