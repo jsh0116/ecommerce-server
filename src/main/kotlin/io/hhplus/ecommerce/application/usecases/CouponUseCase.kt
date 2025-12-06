@@ -1,12 +1,12 @@
 package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.application.services.CouponIssuanceService
+import io.hhplus.ecommerce.application.services.CouponService
+import io.hhplus.ecommerce.application.services.UserService
 import io.hhplus.ecommerce.domain.CouponValidationResult
 import io.hhplus.ecommerce.domain.UserCoupon
 import io.hhplus.ecommerce.exception.*
 import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
-import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
-import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import org.springframework.stereotype.Service
 import org.slf4j.LoggerFactory
 import java.time.LocalDateTime
@@ -14,8 +14,8 @@ import java.util.concurrent.TimeUnit
 
 @Service
 class CouponUseCase(
-    private val couponRepository: CouponRepository,
-    private val userRepository: UserRepository,
+    private val couponService: CouponService,
+    private val userService: UserService,
     private val distributedLockService: DistributedLockService,
     private val couponIssuanceService: CouponIssuanceService
 ) {
@@ -51,16 +51,13 @@ class CouponUseCase(
         try {
             couponIssuanceService.checkIssuanceEligibility(couponId, userId)
 
-            val user = userRepository.findById(userId)
-                ?: throw UserException.UserNotFound(userId.toString())
-
-            val coupon = couponRepository.findById(couponId)
-                ?: throw CouponException.CouponNotFound(couponId.toString())
+            val user = userService.getById(userId)
+            val coupon = couponService.getById(couponId)
 
             if (!coupon.canIssue()) throw CouponException.CouponExhausted()
 
             val remainingQuantity = coupon.issue()
-            couponRepository.save(coupon)
+            couponService.save(coupon)
 
             val userCoupon = UserCoupon(
                 userId = userId,
@@ -73,7 +70,7 @@ class CouponUseCase(
                 expiresAt = LocalDateTime.now().plusDays(7)
             )
 
-            couponRepository.saveUserCoupon(userCoupon)
+            couponService.saveUserCoupon(userCoupon)
 
             // STEP 14: Redis에 발급 기록 (DB 저장 성공 후)
             val remaining = couponIssuanceService.recordIssuance(couponId, userId)
@@ -94,7 +91,7 @@ class CouponUseCase(
     }
 
     fun getUserCoupons(userId: Long): List<UserCoupon> {
-        val coupons = couponRepository.findUserCoupons(userId)
+        val coupons = couponService.findUserCoupons(userId)
         val now = LocalDateTime.now()
 
         for (coupon in coupons) {
@@ -103,7 +100,7 @@ class CouponUseCase(
                 now.isAfter(coupon.expiresAt)
             ) {
                 coupon.expire()
-                couponRepository.saveUserCoupon(coupon)
+                couponService.saveUserCoupon(coupon)
             }
         }
 

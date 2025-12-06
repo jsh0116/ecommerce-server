@@ -1,6 +1,8 @@
 package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.application.services.CouponIssuanceService
+import io.hhplus.ecommerce.application.services.CouponService
+import io.hhplus.ecommerce.application.services.UserService
 import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
 import io.hhplus.ecommerce.domain.Coupon
 import io.hhplus.ecommerce.domain.CouponType
@@ -8,8 +10,6 @@ import io.hhplus.ecommerce.domain.User
 import io.hhplus.ecommerce.domain.UserCoupon
 import io.hhplus.ecommerce.exception.CouponException
 import io.hhplus.ecommerce.exception.UserException
-import io.hhplus.ecommerce.infrastructure.repositories.CouponRepository
-import io.hhplus.ecommerce.infrastructure.repositories.UserRepository
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -26,11 +26,11 @@ import java.util.concurrent.TimeUnit
 @DisplayName("CouponUseCase 테스트")
 class CouponUseCaseTest {
 
-    private val couponRepository = mockk<CouponRepository>()
-    private val userRepository = mockk<UserRepository>()
+    private val couponService = mockk<CouponService>()
+    private val userService = mockk<UserService>()
     private val distributedLockService = mockk<DistributedLockService>()
     private val couponIssuanceService = mockk<CouponIssuanceService>(relaxed = true)
-    private val useCase = CouponUseCase(couponRepository, userRepository, distributedLockService, couponIssuanceService)
+    private val useCase = CouponUseCase(couponService, userService, distributedLockService, couponIssuanceService)
 
     @Nested
     @DisplayName("쿠폰 발급 테스트")
@@ -53,11 +53,10 @@ class CouponUseCaseTest {
                 endDate = LocalDateTime.now().plusDays(7)
             )
 
-            every { userRepository.findById(1L) } returns user
-            every { couponRepository.findUserCouponByCouponId(1L, 1L) } returns null
-            every { couponRepository.findById(1L) } returns coupon
-            every { couponRepository.save(coupon) } just runs
-            every { couponRepository.saveUserCoupon(any()) } just runs
+            every { userService.getById(1L) } returns user
+            every { couponService.getById(1L) } returns coupon
+            every { couponService.save(coupon) } just runs
+            every { couponService.saveUserCoupon(any()) } just runs
 
             // When
             val result = useCase.issueCoupon(1L, 1L)
@@ -66,15 +65,15 @@ class CouponUseCaseTest {
             assertThat(result).isNotNull
             assertThat(result.couponName).isEqualTo("테스트 쿠폰")
             assertThat(result.discountRate).isEqualTo(10)
-            verify { couponRepository.save(coupon) }
-            verify { couponRepository.saveUserCoupon(any()) }
+            verify { couponService.save(coupon) }
+            verify { couponService.saveUserCoupon(any()) }
         }
 
         @Test
         fun `존재하지 않는 사용자는 예외를 발생시킨다`() {
             // Given
             setupLockMock()
-            every { userRepository.findById(999L) } returns null
+            every { userService.getById(999L) } throws UserException.UserNotFound("999")
 
             // When/Then
             assertThatThrownBy {
@@ -89,8 +88,9 @@ class CouponUseCaseTest {
             val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
             val userCoupon = UserCoupon(userId = 1L, couponId = 1L, couponName = "이미 발급됨", discountRate = 10)
 
-            every { userRepository.findById(1L) } returns user
-            every { couponRepository.findUserCouponByCouponId(1L, 1L) } returns userCoupon
+            every { couponIssuanceService.checkIssuanceEligibility(1L, 1L) } throws CouponException.AlreadyIssuedCoupon()
+            every { userService.getById(1L) } returns user
+            every { couponService.validateUserCoupon(1L, 1L) } returns userCoupon
 
             // When/Then
             assertThatThrownBy {
@@ -104,9 +104,8 @@ class CouponUseCaseTest {
             setupLockMock()
             val user = User(id = 1L, balance = 100000L, createdAt = "2024-01-01")
 
-            every { userRepository.findById(1L) } returns user
-            every { couponRepository.findUserCouponByCouponId(1L, 999L) } returns null
-            every { couponRepository.findById(999L) } returns null
+            every { userService.getById(1L) } returns user
+            every { couponService.getById(999L) } throws CouponException.CouponNotFound("999")
 
             // When/Then
             assertThatThrownBy {
@@ -127,9 +126,8 @@ class CouponUseCaseTest {
                 endDate = LocalDateTime.now().plusDays(7)
             )
 
-            every { userRepository.findById(1L) } returns user
-            every { couponRepository.findUserCouponByCouponId(1L, 1L) } returns null
-            every { couponRepository.findById(1L) } returns coupon
+            every { userService.getById(1L) } returns user
+            every { couponService.getById(1L) } returns coupon
 
             // When/Then
             assertThatThrownBy {
@@ -150,9 +148,8 @@ class CouponUseCaseTest {
                 endDate = LocalDateTime.now().minusDays(1) // 이미 만료됨
             )
 
-            every { userRepository.findById(1L) } returns user
-            every { couponRepository.findUserCouponByCouponId(1L, 1L) } returns null
-            every { couponRepository.findById(1L) } returns coupon
+            every { userService.getById(1L) } returns user
+            every { couponService.getById(1L) } returns coupon
 
             // When/Then
             assertThatThrownBy {
@@ -173,9 +170,8 @@ class CouponUseCaseTest {
                 endDate = LocalDateTime.now().plusDays(7)
             )
 
-            every { userRepository.findById(1L) } returns user
-            every { couponRepository.findUserCouponByCouponId(1L, 1L) } returns null
-            every { couponRepository.findById(1L) } returns coupon
+            every { userService.getById(1L) } returns user
+            every { couponService.getById(1L) } returns coupon
 
             // When/Then
             assertThatThrownBy {
@@ -194,7 +190,7 @@ class CouponUseCaseTest {
                 UserCoupon(userId = 1L, couponId = 1L, couponName = "쿠폰1", discountRate = 10),
                 UserCoupon(userId = 1L, couponId = 2L, couponName = "쿠폰2", discountRate = 20)
             )
-            every { couponRepository.findUserCoupons(1L) } returns userCoupons
+            every { couponService.findUserCoupons(1L) } returns userCoupons
 
             // When
             val result = useCase.getUserCoupons(1L)
@@ -207,7 +203,7 @@ class CouponUseCaseTest {
         @Test
         fun `보유 쿠폰이 없으면 빈 목록을 반환한다`() {
             // Given
-            every { couponRepository.findUserCoupons(999L) } returns emptyList()
+            every { couponService.findUserCoupons(999L) } returns emptyList()
 
             // When
             val result = useCase.getUserCoupons(999L)
@@ -230,8 +226,8 @@ class CouponUseCaseTest {
                 expiresAt = LocalDateTime.now().plusDays(7)
             )
             val userCoupons = mutableListOf(expiredCoupon, validCoupon)
-            every { couponRepository.findUserCoupons(1L) } returns userCoupons
-            every { couponRepository.saveUserCoupon(any()) } just runs
+            every { couponService.findUserCoupons(1L) } returns userCoupons
+            every { couponService.saveUserCoupon(any()) } just runs
 
             // When
             val result = useCase.getUserCoupons(1L)
@@ -240,7 +236,7 @@ class CouponUseCaseTest {
             assertThat(result).hasSize(2)
             assertThat(result[0].status).isEqualTo("EXPIRED")
             assertThat(result[1].status).isEqualTo("AVAILABLE")
-            verify { couponRepository.saveUserCoupon(expiredCoupon) }
+            verify { couponService.saveUserCoupon(expiredCoupon) }
         }
     }
 

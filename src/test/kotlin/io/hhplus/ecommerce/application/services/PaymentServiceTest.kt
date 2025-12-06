@@ -1,28 +1,25 @@
 package io.hhplus.ecommerce.application.services
 
-import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
-import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentJpaEntity
-import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentMethodJpa
-import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentStatusJpa
-import io.hhplus.ecommerce.infrastructure.persistence.repository.PaymentJpaRepository
+import io.hhplus.ecommerce.domain.Payment
+import io.hhplus.ecommerce.domain.PaymentMethod
+import io.hhplus.ecommerce.domain.PaymentStatus
+import io.hhplus.ecommerce.infrastructure.repositories.PaymentRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.slot
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
-import java.util.*
-import java.util.concurrent.TimeUnit
 
 @DisplayName("PaymentService 테스트")
 class PaymentServiceTest {
 
-    private val paymentRepository = mockk<PaymentJpaRepository>()
-    private val distributedLockService = mockk<DistributedLockService>()
-    private val service = PaymentService(paymentRepository, distributedLockService)
+    private val paymentRepository = mockk<PaymentRepository>()
+    private val service = PaymentService(paymentRepository)
 
     @Nested
     @DisplayName("결제 처리 테스트")
@@ -31,84 +28,100 @@ class PaymentServiceTest {
         fun `새로운 결제를 생성할 수 있다`() {
             // Given
             val idempotencyKey = "key-001"
-            val payment = PaymentJpaEntity(
+            val createdPayment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = idempotencyKey,
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.PENDING,
+                status = PaymentStatus.PENDING,
                 createdAt = LocalDateTime.now(),
                 updatedAt = LocalDateTime.now()
             )
 
-            every { distributedLockService.tryLock(key = any(), waitTime = any(), holdTime = any(), unit = any()) } returns true
-            every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns null
-            every { paymentRepository.save(any()) } returns payment
-            every { paymentRepository.flush() } returns Unit
-            every { distributedLockService.unlock(any()) } returns Unit
+            val blockSlot = slot<() -> Payment>()
+            every { paymentRepository.withDistributedLock<Payment>(
+                idempotencyKey = idempotencyKey,
+                waitTime = 60L,
+                holdTime = 30L,
+                block = capture(blockSlot)
+            ) } answers { blockSlot.captured.invoke() }
+
+            every { paymentRepository.findByIdempotencyKeyInNewTransaction(idempotencyKey) } returns null
+            every { paymentRepository.saveInNewTransaction(any()) } returns createdPayment
 
             // When
-            val result = service.processPayment(1L, 50000L, PaymentMethodJpa.CARD, idempotencyKey)
+            val result = service.processPayment(1L, 50000L, PaymentMethod.CARD, idempotencyKey)
 
             // Then
             assertThat(result).isNotNull
             assertThat(result.orderId).isEqualTo(1L)
             assertThat(result.amount).isEqualTo(50000L)
-            assertThat(result.status).isEqualTo(PaymentStatusJpa.PENDING)
-            verify { paymentRepository.findByIdempotencyKey(idempotencyKey) }
-            verify { paymentRepository.save(any()) }
+            assertThat(result.status).isEqualTo(PaymentStatus.PENDING)
+            verify { paymentRepository.findByIdempotencyKeyInNewTransaction(idempotencyKey) }
+            verify { paymentRepository.saveInNewTransaction(any()) }
         }
 
         @Test
         fun `동일한 키로 재요청 시 기존 결과를 반환한다`() {
             // Given
             val idempotencyKey = "key-001"
-            val existingPayment = PaymentJpaEntity(
+            val existingPayment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = idempotencyKey,
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.PENDING
+                status = PaymentStatus.PENDING
             )
 
-            every { distributedLockService.tryLock(key = any(), waitTime = any(), holdTime = any(), unit = any()) } returns true
-            every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns existingPayment
-            every { distributedLockService.unlock(any()) } returns Unit
+            val blockSlot = slot<() -> Payment>()
+            every { paymentRepository.withDistributedLock<Payment>(
+                idempotencyKey = idempotencyKey,
+                waitTime = 60L,
+                holdTime = 30L,
+                block = capture(blockSlot)
+            ) } answers { blockSlot.captured.invoke() }
+
+            every { paymentRepository.findByIdempotencyKeyInNewTransaction(idempotencyKey) } returns existingPayment
 
             // When
-            val result = service.processPayment(1L, 50000L, PaymentMethodJpa.CARD, idempotencyKey)
+            val result = service.processPayment(1L, 50000L, PaymentMethod.CARD, idempotencyKey)
 
             // Then
             assertThat(result).isEqualTo(existingPayment)
-            verify(exactly = 0) { paymentRepository.save(any()) }
+            verify(exactly = 0) { paymentRepository.saveInNewTransaction(any()) }
         }
 
         @Test
         fun `다양한 결제 방법으로 결제할 수 있다`() {
             // Given
             val idempotencyKey = "key-bank"
-            val payment = PaymentJpaEntity(
+            val createdPayment = Payment(
                 id = 2L,
                 orderId = 2L,
                 idempotencyKey = idempotencyKey,
-                method = PaymentMethodJpa.BANK_TRANSFER,
+                method = PaymentMethod.BANK_TRANSFER,
                 amount = 100000L,
-                status = PaymentStatusJpa.PENDING
+                status = PaymentStatus.PENDING
             )
 
-            every { distributedLockService.tryLock(key = any(), waitTime = any(), holdTime = any(), unit = any()) } returns true
-            every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns null
-            every { paymentRepository.save(any()) } returns payment
-            every { paymentRepository.flush() } returns Unit
-            every { distributedLockService.unlock(any()) } returns Unit
+            val blockSlot = slot<() -> Payment>()
+            every { paymentRepository.withDistributedLock<Payment>(
+                idempotencyKey = idempotencyKey,
+                waitTime = 60L,
+                holdTime = 30L,
+                block = capture(blockSlot)
+            ) } answers { blockSlot.captured.invoke() }
+
+            every { paymentRepository.findByIdempotencyKeyInNewTransaction(idempotencyKey) } returns null
+            every { paymentRepository.saveInNewTransaction(any()) } returns createdPayment
 
             // When
-            val result = service.processPayment(2L, 100000L, PaymentMethodJpa.BANK_TRANSFER, idempotencyKey)
+            val result = service.processPayment(2L, 100000L, PaymentMethod.BANK_TRANSFER, idempotencyKey)
 
             // Then
-            assertThat(result.method).isEqualTo(PaymentMethodJpa.BANK_TRANSFER)
+            assertThat(result.method).isEqualTo(PaymentMethod.BANK_TRANSFER)
         }
     }
 
@@ -118,26 +131,17 @@ class PaymentServiceTest {
         @Test
         fun `결제를 승인할 수 있다`() {
             // Given
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.PENDING
+                status = PaymentStatus.PENDING
             )
-            val approvedPayment = PaymentJpaEntity(
-                id = 1L,
-                orderId = 1L,
-                idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
-                amount = 50000L,
-                status = PaymentStatusJpa.APPROVED,
-                transactionId = "TXN-001",
-                approvedAt = LocalDateTime.now()
-            )
+            val approvedPayment = payment.approve("TXN-001")
 
-            every { paymentRepository.findById(1L) } returns Optional.of(payment)
+            every { paymentRepository.findById(1L) } returns payment
             every { paymentRepository.save(any()) } returns approvedPayment
 
             // When
@@ -145,7 +149,7 @@ class PaymentServiceTest {
 
             // Then
             assertThat(result).isNotNull
-            assertThat(result.status).isEqualTo(PaymentStatusJpa.APPROVED)
+            assertThat(result.status).isEqualTo(PaymentStatus.APPROVED)
             assertThat(result.transactionId).isEqualTo("TXN-001")
             verify { paymentRepository.findById(1L) }
             verify { paymentRepository.save(any()) }
@@ -154,7 +158,7 @@ class PaymentServiceTest {
         @Test
         fun `존재하지 않는 결제는 예외를 발생시킨다`() {
             // Given
-            every { paymentRepository.findById(999L) } returns Optional.empty()
+            every { paymentRepository.findById(999L) } returns null
 
             // When/Then
             assertThatThrownBy {
@@ -170,26 +174,17 @@ class PaymentServiceTest {
         @Test
         fun `결제 실패 처리를 할 수 있다`() {
             // Given
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.PENDING
+                status = PaymentStatus.PENDING
             )
-            val failedPayment = PaymentJpaEntity(
-                id = 1L,
-                orderId = 1L,
-                idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
-                amount = 50000L,
-                status = PaymentStatusJpa.FAILED,
-                failReason = "카드 승인 거절",
-                pgCode = "CARD_DECLINED"
-            )
+            val failedPayment = payment.fail("카드 승인 거절", "CARD_DECLINED")
 
-            every { paymentRepository.findById(1L) } returns Optional.of(payment)
+            every { paymentRepository.findById(1L) } returns payment
             every { paymentRepository.save(any()) } returns failedPayment
 
             // When
@@ -197,7 +192,7 @@ class PaymentServiceTest {
 
             // Then
             assertThat(result).isNotNull
-            assertThat(result.status).isEqualTo(PaymentStatusJpa.FAILED)
+            assertThat(result.status).isEqualTo(PaymentStatus.FAILED)
             assertThat(result.failReason).isEqualTo("카드 승인 거절")
             assertThat(result.pgCode).isEqualTo("CARD_DECLINED")
             verify { paymentRepository.findById(1L) }
@@ -207,25 +202,17 @@ class PaymentServiceTest {
         @Test
         fun `PG 코드 없이 실패 처리할 수 있다`() {
             // Given
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.PENDING
+                status = PaymentStatus.PENDING
             )
-            val failedPayment = PaymentJpaEntity(
-                id = 1L,
-                orderId = 1L,
-                idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
-                amount = 50000L,
-                status = PaymentStatusJpa.FAILED,
-                failReason = "일반 오류"
-            )
+            val failedPayment = payment.fail("일반 오류", null)
 
-            every { paymentRepository.findById(1L) } returns Optional.of(payment)
+            every { paymentRepository.findById(1L) } returns payment
             every { paymentRepository.save(any()) } returns failedPayment
 
             // When
@@ -233,7 +220,7 @@ class PaymentServiceTest {
 
             // Then
             assertThat(result).isNotNull
-            assertThat(result.status).isEqualTo(PaymentStatusJpa.FAILED)
+            assertThat(result.status).isEqualTo(PaymentStatus.FAILED)
             assertThat(result.pgCode).isNull()
         }
     }
@@ -244,28 +231,19 @@ class PaymentServiceTest {
         @Test
         fun `승인된 결제를 환불할 수 있다`() {
             // Given
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.APPROVED,
+                status = PaymentStatus.APPROVED,
                 transactionId = "TXN-001",
                 approvedAt = LocalDateTime.now()
             )
-            val refundedPayment = PaymentJpaEntity(
-                id = 1L,
-                orderId = 1L,
-                idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
-                amount = 50000L,
-                status = PaymentStatusJpa.REFUNDED,
-                transactionId = "TXN-001",
-                approvedAt = LocalDateTime.now()
-            )
+            val refundedPayment = payment.refund()
 
-            every { paymentRepository.findById(1L) } returns Optional.of(payment)
+            every { paymentRepository.findById(1L) } returns payment
             every { paymentRepository.save(any()) } returns refundedPayment
 
             // When
@@ -273,7 +251,7 @@ class PaymentServiceTest {
 
             // Then
             assertThat(result).isNotNull
-            assertThat(result.status).isEqualTo(PaymentStatusJpa.REFUNDED)
+            assertThat(result.status).isEqualTo(PaymentStatus.REFUNDED)
             verify { paymentRepository.findById(1L) }
             verify { paymentRepository.save(any()) }
         }
@@ -281,16 +259,16 @@ class PaymentServiceTest {
         @Test
         fun `미승인 결제는 환불할 수 없다`() {
             // Given
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.PENDING
+                status = PaymentStatus.PENDING
             )
 
-            every { paymentRepository.findById(1L) } returns Optional.of(payment)
+            every { paymentRepository.findById(1L) } returns payment
 
             // When/Then
             assertThatThrownBy {
@@ -307,13 +285,13 @@ class PaymentServiceTest {
         fun `멱등성 키로 결제를 조회할 수 있다`() {
             // Given
             val idempotencyKey = "key-001"
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = idempotencyKey,
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.APPROVED
+                status = PaymentStatus.APPROVED
             )
 
             every { paymentRepository.findByIdempotencyKey(idempotencyKey) } returns payment
@@ -329,13 +307,13 @@ class PaymentServiceTest {
         @Test
         fun `주문별 결제를 조회할 수 있다`() {
             // Given
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.APPROVED
+                status = PaymentStatus.APPROVED
             )
 
             every { paymentRepository.findByOrderId(1L) } returns payment
@@ -355,13 +333,13 @@ class PaymentServiceTest {
         @Test
         fun `결제가 승인되었는지 확인할 수 있다`() {
             // Given
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.APPROVED
+                status = PaymentStatus.APPROVED
             )
 
             every { paymentRepository.findByOrderId(1L) } returns payment
@@ -376,13 +354,13 @@ class PaymentServiceTest {
         @Test
         fun `미승인 결제는 false를 반환한다`() {
             // Given
-            val payment = PaymentJpaEntity(
+            val payment = Payment(
                 id = 1L,
                 orderId = 1L,
                 idempotencyKey = "key-001",
-                method = PaymentMethodJpa.CARD,
+                method = PaymentMethod.CARD,
                 amount = 50000L,
-                status = PaymentStatusJpa.PENDING
+                status = PaymentStatus.PENDING
             )
 
             every { paymentRepository.findByOrderId(1L) } returns payment

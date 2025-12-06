@@ -6,7 +6,7 @@ import io.hhplus.ecommerce.application.services.ReservationService
 import io.hhplus.ecommerce.config.TestContainersConfig
 import io.hhplus.ecommerce.config.TestRedisConfig
 import io.hhplus.ecommerce.config.TestRedissonConfig
-import io.hhplus.ecommerce.infrastructure.persistence.entity.PaymentMethodJpa
+import io.hhplus.ecommerce.domain.PaymentMethod
 import io.hhplus.ecommerce.infrastructure.persistence.entity.ReservationStatusJpa
 import io.hhplus.ecommerce.infrastructure.persistence.repository.InventoryJpaRepository
 import io.hhplus.ecommerce.infrastructure.persistence.repository.PaymentJpaRepository
@@ -182,7 +182,7 @@ class DatabaseIntegrationTest {
         val orderId = 2000L
         val amount = 50000L
         val idempotencyKey = "payment-key-2000"
-        val method = PaymentMethodJpa.CARD
+        val method = PaymentMethod.CARD
 
         // When: 첫 번째 결제 요청
         val firstPayment = paymentService.processPayment(
@@ -222,7 +222,7 @@ class DatabaseIntegrationTest {
     fun idempotency_differentOrderId_shouldCreateNewPayment() {
         // Given
         val amount = 30000L
-        val method = PaymentMethodJpa.CARD
+        val method = PaymentMethod.CARD
         val idempotencyKey = "payment-key-different-order"
 
         // When: 다른 orderId로 결제 요청
@@ -252,7 +252,7 @@ class DatabaseIntegrationTest {
         val orderId = 2002L  // 모든 스레드가 동일한 주문에 대해 결제 요청 (멱등성 테스트)
         val amount = 25000L
         val idempotencyKey = "concurrent-payment-key"  // 동일한 멱등성 키
-        val method = PaymentMethodJpa.CARD
+        val method = PaymentMethod.CARD
         val threadCount = 5
 
         val paymentIds = mutableListOf<Long>()

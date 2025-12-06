@@ -13,4 +13,14 @@ object UserException {
         errorCode = "INSUFFICIENT_BALANCE",
         message = "잔액이 부족합니다. 필요: ${required}원, 현재: ${current}원"
     )
+
+    class InvalidChargeAmount(amount: Long) : BusinessRuleViolationException(
+        errorCode = "INVALID_CHARGE_AMOUNT",
+        message = "충전 금액은 0보다 커야 합니다: ${amount}원"
+    )
+
+    class InvalidPaymentAmount(amount: Long) : BusinessRuleViolationException(
+        errorCode = "INVALID_PAYMENT_AMOUNT",
+        message = "결제 금액은 0보다 커야 합니다: ${amount}원"
+    )
 }

@@ -1,7 +1,7 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.ProductService
 import io.hhplus.ecommerce.domain.Product
-import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import org.slf4j.LoggerFactory
 import org.springframework.cache.annotation.Cacheable
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service
  */
 @Service
 class ProductUseCase(
-    private val productRepository: ProductRepository,
+    private val productService: ProductService,
     private val inventoryRepository: InventoryRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -20,7 +20,7 @@ class ProductUseCase(
      * 상품 단건 조회
      */
     fun getProductById(productId: Long): Product? {
-        return productRepository.findById(productId)
+        return productService.getByIdOrNull(productId)
     }
     /**
      * 상품 목록 조회
@@ -32,19 +32,19 @@ class ProductUseCase(
     @Cacheable(value = ["products"], key = "T(String).valueOf(#category ?: 'all') + ':' + #sort")
     fun getProducts(category: String?, sort: String): List<Product> {
         logger.debug("상품 목록 조회 (DB): category=$category, sort=$sort")
-        return productRepository.findAll(category, sort)
+        return productService.findAll(category, sort)
     }
 
     /**
      * 상품 조회 (조회수 증가)
      */
     fun viewProduct(productId: Long): Product {
-        val product = productRepository.findById(productId)
+        val product = productService.getByIdOrNull(productId)
             ?: throw IllegalStateException("상품을 찾을 수 없습니다")
 
         // 조회수 증가
         product.incrementViewCount()
-        productRepository.save(product)
+        productService.save(product)
 
         return product
     }
@@ -53,12 +53,12 @@ class ProductUseCase(
      * 판매량 증가 (주문 완료 시 호출)
      */
     fun recordSale(productId: Long, quantity: Int) {
-        val product = productRepository.findById(productId)
+        val product = productService.getByIdOrNull(productId)
             ?: throw IllegalStateException("상품을 찾을 수 없습니다")
 
         // 판매량 증가
         product.incrementSalesCount(quantity)
-        productRepository.save(product)
+        productService.save(product)
     }
 
     /**
@@ -73,7 +73,7 @@ class ProductUseCase(
         logger.debug("인기 상품 조회 (DB): limit=$limit")
 
         // 전체 상품 조회
-        val allProducts = productRepository.findAll(null, "newest")
+        val allProducts = productService.findAll(null, "newest")
 
         // 인기도 점수 기준으로 정렬 및 상위 N개 선택
         val topProducts = allProducts
@@ -101,7 +101,7 @@ class ProductUseCase(
         val from = now - (days * 24L * 60 * 60 * 1000)
 
         // 상위 판매 상품 조회 (Repository에서 기간별 집계 지원 시)
-        val topProducts = productRepository.findTopSelling(from, limit)
+        val topProducts = productService.findTopSelling(from, limit)
             .mapIndexed { index, product ->
                 TopProductItem(
                     rank = index + 1,
@@ -120,7 +120,7 @@ class ProductUseCase(
      */
     fun checkStock(productId: Long, quantity: Int): StockCheckResponse {
         // 상품 조회
-        val product = productRepository.findById(productId)
+        val product = productService.getByIdOrNull(productId)
             ?: throw IllegalStateException("상품을 찾을 수 없습니다")
 
         // 재고 조회 (Product ID를 SKU로 사용)
