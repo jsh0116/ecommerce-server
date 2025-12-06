@@ -94,8 +94,17 @@ class CouponIssuanceService(
                 throw CouponException.CouponExhausted()
             }
 
-            // 3. Set에 userId 추가 (발급 기록)
-            redisTemplate.opsForSet().add(issuedSetKey, userId.toString())
+            // 3. Set에 userId 추가 (발급 기록) - add는 원자적으로 중복 체크 및 추가
+            // add 반환값: 추가된 개수 (이미 존재하면 0, 성공하면 1)
+            val addedCount = redisTemplate.opsForSet().add(issuedSetKey, userId.toString()) ?: 0L
+
+            if (addedCount == 0L) {
+                // 이미 발급받은 사용자 (Race condition으로 인한 중복 발급 시도)
+                // 카운트 롤백
+                redisTemplate.opsForValue().decrement(countKey)
+                throw CouponException.AlreadyIssuedCoupon()
+            }
+
             redisTemplate.expire(issuedSetKey, TTL_DAYS, TimeUnit.DAYS)
 
             val remaining = quota - newCount

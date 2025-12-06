@@ -1,31 +1,39 @@
 package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.application.services.CouponIssuanceService
+import io.hhplus.ecommerce.application.services.CouponIssuanceQueueService
 import io.hhplus.ecommerce.application.services.CouponService
 import io.hhplus.ecommerce.application.services.UserService
 import io.hhplus.ecommerce.domain.CouponValidationResult
 import io.hhplus.ecommerce.domain.UserCoupon
 import io.hhplus.ecommerce.exception.*
-import io.hhplus.ecommerce.infrastructure.lock.DistributedLockService
 import org.springframework.stereotype.Service
 import org.slf4j.LoggerFactory
 import java.time.LocalDateTime
-import java.util.concurrent.TimeUnit
+import java.util.UUID
 
 @Service
 class CouponUseCase(
     private val couponService: CouponService,
     private val userService: UserService,
-    private val distributedLockService: DistributedLockService,
-    private val couponIssuanceService: CouponIssuanceService
+    private val couponIssuanceService: CouponIssuanceService,
+    private val couponIssuanceQueueService: CouponIssuanceQueueService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
-    companion object {
-        private const val COUPON_LOCK_PREFIX = "coupon:lock:"
-    }
 
+    /**
+     * 쿠폰 발급 요청 (비동기 방식)
+     *
+     * Redis에서 발급 가능 여부만 빠르게 체크하고,
+     * 대기열에 추가한 후 즉시 응답을 반환합니다.
+     * 실제 DB 저장은 백그라운드 스케줄러가 처리합니다.
+     *
+     * @param couponId 쿠폰 ID
+     * @param userId 사용자 ID
+     * @return 쿠폰 발급 요청 결과
+     */
     fun issueCoupon(couponId: Long, userId: Long): CouponIssueResult {
-        // Redis 사전 체크 (Lock 없이 빠르게 실패)
+        // 1. Redis 사전 체크 (빠른 실패)
         try {
             couponIssuanceService.checkIssuanceEligibility(couponId, userId)
         } catch (e: BusinessRuleViolationException) {
@@ -36,58 +44,40 @@ class CouponUseCase(
             throw e
         }
 
-        val lockKey = "$COUPON_LOCK_PREFIX$couponId"
-        val lockAcquired = distributedLockService.tryLock(
-            key = lockKey,
-            waitTime = 3L,
-            holdTime = 10L,
-            unit = TimeUnit.SECONDS
+        // 2. 쿠폰 정보 조회 (응답에 필요한 정보)
+        val coupon = couponService.getById(couponId)
+        val status = couponIssuanceService.getCouponStatus(couponId)
+
+        // 3. 발급 요청을 대기열에 추가
+        val requestId = UUID.randomUUID().toString()
+        val request = CouponIssuanceQueueService.CouponIssuanceRequest(
+            requestId = requestId,
+            couponId = couponId,
+            userId = userId,
+            requestedAt = System.currentTimeMillis()
         )
 
-        if (!lockAcquired) {
-            throw CouponException.CouponLockTimeout("쿠폰 발급 대기 시간 초과")
+        val enqueued = couponIssuanceQueueService.enqueue(request)
+
+        if (!enqueued) {
+            throw CouponException.CouponIssuanceFailed("쿠폰 발급 요청 실패: 대기열 추가 오류")
         }
 
-        try {
-            couponIssuanceService.checkIssuanceEligibility(couponId, userId)
+        logger.info(
+            "쿠폰 발급 요청 대기열 추가 완료: requestId={}, couponId={}, userId={}, remaining={}",
+            requestId, couponId, userId, status.remainingQuantity
+        )
 
-            val user = userService.getById(userId)
-            val coupon = couponService.getById(couponId)
-
-            if (!coupon.canIssue()) throw CouponException.CouponExhausted()
-
-            val remainingQuantity = coupon.issue()
-            couponService.save(coupon)
-
-            val userCoupon = UserCoupon(
-                userId = userId,
-                couponId = coupon.id,
-                couponName = coupon.name,
-                discountRate = coupon.discountRate,
-                status = "AVAILABLE",
-                issuedAt = LocalDateTime.now(),
-                usedAt = null,
-                expiresAt = LocalDateTime.now().plusDays(7)
-            )
-
-            couponService.saveUserCoupon(userCoupon)
-
-            // STEP 14: Redis에 발급 기록 (DB 저장 성공 후)
-            val remaining = couponIssuanceService.recordIssuance(couponId, userId)
-
-            logger.info("쿠폰 발급 성공: couponId={}, userId={}, remaining={}", couponId, userId, remaining)
-
-            return CouponIssueResult(
-                userCouponId = couponId,
-                couponName = userCoupon.couponName,
-                discountRate = userCoupon.discountRate,
-                expiresAt = userCoupon.expiresAt,
-                remainingQuantity = remaining.toInt()
-            )
-        } finally {
-            // 명시적 락 해제
-            distributedLockService.unlock(lockKey)
-        }
+        // 4. 빠른 응답 반환 (실제 발급은 백그라운드에서 처리)
+        return CouponIssueResult(
+            userCouponId = couponId,  // 아직 실제 발급 전이므로 임시값
+            couponName = coupon.name,
+            discountRate = coupon.discountRate,
+            expiresAt = LocalDateTime.now().plusDays(7),  // 예상 만료일
+            remainingQuantity = status.remainingQuantity.toInt(),
+            requestId = requestId,  // 발급 요청 ID (상태 조회용)
+            status = "PENDING"  // 발급 대기 중
+        )
     }
 
     fun getUserCoupons(userId: Long): List<UserCoupon> {
@@ -121,6 +111,8 @@ class CouponUseCase(
         val couponName: String,
         val discountRate: Int,
         val expiresAt: LocalDateTime,
-        val remainingQuantity: Int
+        val remainingQuantity: Int,
+        val requestId: String? = null,      // 발급 요청 ID (비동기 처리 상태 조회용)
+        val status: String = "COMPLETED"    // 발급 상태 (PENDING, COMPLETED, FAILED)
     )
 }

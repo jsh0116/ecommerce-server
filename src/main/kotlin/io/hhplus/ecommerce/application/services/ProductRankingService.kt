@@ -1,7 +1,5 @@
 package io.hhplus.ecommerce.application.services
 
-import io.hhplus.ecommerce.domain.Product
-import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.stereotype.Service
@@ -17,6 +15,7 @@ import java.util.concurrent.TimeUnit
  * - 일간/주간 랭킹을 Key 분리로 관리
  * - TTL을 통한 자동 만료로 메모리 관리
  * - DB 부하 없이 실시간 랭킹 조회 가능
+ * - 랭킹 조회 결과는 Product ID 리스트만 반환 (Product 조회는 UseCase에서 담당)
  *
  * Key 구조:
  * - ranking:products:daily:{YYYYMMDD} - 일간 상품 판매 랭킹
@@ -30,8 +29,7 @@ import java.util.concurrent.TimeUnit
  */
 @Service
 class ProductRankingService(
-    private val redisTemplate: RedisTemplate<String, String>,
-    private val productRepository: ProductRepository
+    private val redisTemplate: RedisTemplate<String, String>
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -76,25 +74,25 @@ class ProductRankingService(
     }
 
     /**
-     * 일간 TOP N 상품 조회
+     * 일간 TOP N 상품 ID 조회
      *
      * @param limit 조회할 상품 수 (기본값: 10)
      * @param date 조회 날짜 (기본값: 오늘)
-     * @return 랭킹 순으로 정렬된 상품 목록
+     * @return 랭킹 순으로 정렬된 상품 ID 목록
      */
-    fun getTopProductsDaily(limit: Int = 10, date: LocalDate = LocalDate.now()): List<RankingItem> {
-        return getTopProducts(getDailyRankingKey(date), limit)
+    fun getTopProductIdsDaily(limit: Int = 10, date: LocalDate = LocalDate.now()): List<RankingProductId> {
+        return getTopProductIds(getDailyRankingKey(date), limit)
     }
 
     /**
-     * 주간 TOP N 상품 조회
+     * 주간 TOP N 상품 ID 조회
      *
      * @param limit 조회할 상품 수 (기본값: 10)
      * @param date 조회 날짜 (기본값: 오늘)
-     * @return 랭킹 순으로 정렬된 상품 목록
+     * @return 랭킹 순으로 정렬된 상품 ID 목록
      */
-    fun getTopProductsWeekly(limit: Int = 10, date: LocalDate = LocalDate.now()): List<RankingItem> {
-        return getTopProducts(getWeeklyRankingKey(date), limit)
+    fun getTopProductIdsWeekly(limit: Int = 10, date: LocalDate = LocalDate.now()): List<RankingProductId> {
+        return getTopProductIds(getWeeklyRankingKey(date), limit)
     }
 
     /**
@@ -140,9 +138,12 @@ class ProductRankingService(
     // ===== Private Helper Methods =====
 
     /**
-     * TOP N 상품 조회 (공통 로직)
+     * TOP N 상품 ID 조회 (공통 로직)
+     *
+     * Redis에서 상위 N개의 상품 ID와 판매량만 조회합니다.
+     * Product 상세 정보는 UseCase 레이어에서 조회합니다.
      */
-    private fun getTopProducts(key: String, limit: Int): List<RankingItem> {
+    private fun getTopProductIds(key: String, limit: Int): List<RankingProductId> {
         try {
             // ZREVRANGE: score 높은 순으로 조회 (내림차순)
             // 0부터 limit-1까지 조회
@@ -154,27 +155,19 @@ class ProductRankingService(
                 return emptyList()
             }
 
-            // Product 정보를 DB에서 조회
-            val products = productRepository.findAllById(
-                productIds.mapNotNull { it.toLongOrNull() }
-            ).associateBy { it.id }
-
-            // 랭킹 순서대로 결과 생성
+            // 랭킹 순서대로 Product ID와 판매량만 반환
             return productIds.mapIndexedNotNull { index, productIdStr ->
                 val productId = productIdStr.toLongOrNull() ?: return@mapIndexedNotNull null
-                val product = products[productId] ?: return@mapIndexedNotNull null
                 val salesCount = redisTemplate.opsForZSet().score(key, productIdStr)?.toLong() ?: 0L
 
-                RankingItem(
+                RankingProductId(
                     rank = index + 1,
                     productId = productId,
-                    productName = product.name,
-                    salesCount = salesCount,
-                    product = product
+                    salesCount = salesCount
                 )
             }
         } catch (e: Exception) {
-            logger.error("TOP 상품 조회 실패: key={}, error={}", key, e.message)
+            logger.error("TOP 상품 ID 조회 실패: key={}, error={}", key, e.message)
             return emptyList()
         }
     }
@@ -227,13 +220,14 @@ class ProductRankingService(
     }
 
     /**
-     * 랭킹 아이템 DTO
+     * 랭킹 상품 ID DTO
+     *
+     * Redis 랭킹에서 조회한 상품 ID와 판매량 정보만 포함합니다.
+     * Product 상세 정보는 UseCase에서 별도로 조회합니다.
      */
-    data class RankingItem(
+    data class RankingProductId(
         val rank: Int,
         val productId: Long,
-        val productName: String,
-        val salesCount: Long,
-        val product: Product
+        val salesCount: Long
     )
 }

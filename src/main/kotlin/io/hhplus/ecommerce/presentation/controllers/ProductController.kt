@@ -382,16 +382,16 @@ class ProductController(
         )
         @RequestParam(defaultValue = "10") limit: Int
     ): ResponseEntity<ProductRankingResponse> {
-        val rankings = productRankingService.getTopProductsDaily(limit)
+        val topProducts = productUseCase.getTopProductsFromDailyRanking(limit)
 
         return ResponseEntity.ok(
             ProductRankingResponse(
                 type = "daily",
-                rankings = rankings.map {
+                rankings = topProducts.products.map {
                     ProductRankingItemDto(
                         rank = it.rank,
-                        productId = it.productId,
-                        productName = it.productName,
+                        productId = it.product.id,
+                        productName = it.product.name,
                         salesCount = it.salesCount,
                         price = it.product.price,
                         category = it.product.category
@@ -422,16 +422,16 @@ class ProductController(
         )
         @RequestParam(defaultValue = "10") limit: Int
     ): ResponseEntity<ProductRankingResponse> {
-        val rankings = productRankingService.getTopProductsWeekly(limit)
+        val topProducts = productUseCase.getTopProductsFromWeeklyRanking(limit)
 
         return ResponseEntity.ok(
             ProductRankingResponse(
                 type = "weekly",
-                rankings = rankings.map {
+                rankings = topProducts.products.map {
                     ProductRankingItemDto(
                         rank = it.rank,
-                        productId = it.productId,
-                        productName = it.productName,
+                        productId = it.product.id,
+                        productName = it.product.name,
                         salesCount = it.salesCount,
                         price = it.product.price,
                         category = it.product.category

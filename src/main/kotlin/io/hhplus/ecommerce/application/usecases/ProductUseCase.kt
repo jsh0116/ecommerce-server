@@ -1,8 +1,10 @@
 package io.hhplus.ecommerce.application.usecases
 
 import io.hhplus.ecommerce.application.services.ProductService
+import io.hhplus.ecommerce.application.services.ProductRankingService
 import io.hhplus.ecommerce.domain.Product
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
+import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import org.slf4j.LoggerFactory
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
@@ -13,7 +15,9 @@ import org.springframework.stereotype.Service
 @Service
 class ProductUseCase(
     private val productService: ProductService,
-    private val inventoryRepository: InventoryRepository
+    private val inventoryRepository: InventoryRepository,
+    private val productRepository: ProductRepository,
+    private val productRankingService: ProductRankingService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
     /**
@@ -111,6 +115,82 @@ class ProductUseCase(
                     salesCount = product.salesCount
                 )
             }
+
+        return TopProductResponse(products = topProducts)
+    }
+
+    /**
+     * Redis 기반 일간 TOP N 상품 조회
+     *
+     * ProductRankingService에서 상품 ID 목록을 조회한 후,
+     * ProductRepository에서 일괄 조회하여 응답을 생성합니다.
+     *
+     * @param limit 조회할 상품 수
+     * @return 랭킹 순으로 정렬된 상품 목록
+     */
+    fun getTopProductsFromDailyRanking(limit: Int = 10): TopProductResponse {
+        logger.debug("일간 랭킹 기반 인기 상품 조회: limit=$limit")
+
+        // 1. Redis에서 상품 ID 목록 조회
+        val rankingIds = productRankingService.getTopProductIdsDaily(limit)
+
+        if (rankingIds.isEmpty()) {
+            return TopProductResponse(products = emptyList())
+        }
+
+        // 2. ProductRepository에서 상품 정보 일괄 조회
+        val productIds = rankingIds.map { it.productId }
+        val products = productRepository.findAllById(productIds).associateBy { it.id }
+
+        // 3. 랭킹 순서대로 응답 생성
+        val topProducts = rankingIds.mapNotNull { rankingId ->
+            val product = products[rankingId.productId] ?: return@mapNotNull null
+            TopProductItem(
+                rank = rankingId.rank,
+                product = product,
+                popularityScore = product.calculatePopularityScore(),
+                viewCount = product.viewCount,
+                salesCount = rankingId.salesCount // Redis의 판매량 사용
+            )
+        }
+
+        return TopProductResponse(products = topProducts)
+    }
+
+    /**
+     * Redis 기반 주간 TOP N 상품 조회
+     *
+     * ProductRankingService에서 상품 ID 목록을 조회한 후,
+     * ProductRepository에서 일괄 조회하여 응답을 생성합니다.
+     *
+     * @param limit 조회할 상품 수
+     * @return 랭킹 순으로 정렬된 상품 목록
+     */
+    fun getTopProductsFromWeeklyRanking(limit: Int = 10): TopProductResponse {
+        logger.debug("주간 랭킹 기반 인기 상품 조회: limit=$limit")
+
+        // 1. Redis에서 상품 ID 목록 조회
+        val rankingIds = productRankingService.getTopProductIdsWeekly(limit)
+
+        if (rankingIds.isEmpty()) {
+            return TopProductResponse(products = emptyList())
+        }
+
+        // 2. ProductRepository에서 상품 정보 일괄 조회
+        val productIds = rankingIds.map { it.productId }
+        val products = productRepository.findAllById(productIds).associateBy { it.id }
+
+        // 3. 랭킹 순서대로 응답 생성
+        val topProducts = rankingIds.mapNotNull { rankingId ->
+            val product = products[rankingId.productId] ?: return@mapNotNull null
+            TopProductItem(
+                rank = rankingId.rank,
+                product = product,
+                popularityScore = product.calculatePopularityScore(),
+                viewCount = product.viewCount,
+                salesCount = rankingId.salesCount // Redis의 판매량 사용
+            )
+        }
 
         return TopProductResponse(products = topProducts)
     }
