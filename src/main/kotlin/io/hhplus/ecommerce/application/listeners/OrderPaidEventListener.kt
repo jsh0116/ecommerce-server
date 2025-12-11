@@ -5,14 +5,17 @@ import io.hhplus.ecommerce.application.services.DataTransmissionService
 import io.hhplus.ecommerce.application.usecases.OrderUseCase
 import io.hhplus.ecommerce.infrastructure.repositories.OrderRepository
 import org.slf4j.LoggerFactory
-import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
+import org.springframework.transaction.event.TransactionPhase
+import org.springframework.transaction.event.TransactionalEventListener
 
 /**
  * 주문 결제 완료 이벤트 리스너
  *
  * OrderPaidEvent 발행 시 외부 시스템으로 데이터를 전송합니다.
+ * @TransactionalEventListener(phase = AFTER_COMMIT)을 통해
+ * 트랜잭션이 성공적으로 커밋된 이후에만 이벤트가 처리됩니다.
  * @Async를 통해 DB 트랜잭션과 분리된 비동기 스레드에서 실행됩니다.
  * 외부 시스템 전송 실패는 재시도 큐에 저장되어 별도로 처리됩니다.
  */
@@ -26,9 +29,12 @@ class OrderPaidEventListener(
     /**
      * 주문 결제 완료 시 외부 데이터 전송
      *
+     * 트랜잭션 커밋 이후(AFTER_COMMIT)에 실행되어
+     * 외부 API 실패가 주문 트랜잭션을 롤백시키지 않습니다.
+     *
      * @param event 주문 결제 완료 이벤트
      */
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async
     fun handleOrderPaidEvent(event: OrderPaidEvent) {
         try {
