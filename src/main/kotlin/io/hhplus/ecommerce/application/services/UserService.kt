@@ -27,4 +27,14 @@ class UserService(
         userRepository.save(user)
         return user
     }
+
+    /**
+     * 잔액 추가 (보상 트랜잭션용)
+     */
+    fun addBalance(userId: Long, amount: Long): User {
+        val user = getById(userId)
+        user.charge(amount)
+        userRepository.save(user)
+        return user
+    }
 }
