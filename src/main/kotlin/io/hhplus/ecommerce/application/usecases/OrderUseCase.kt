@@ -12,6 +12,7 @@ import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import io.hhplus.ecommerce.exception.*
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 import java.util.UUID
 
@@ -120,7 +121,11 @@ class OrderUseCase(
 
     /**
      * 결제 처리
+     *
+     * @Transactional을 통해 트랜잭션 컨텍스트 보장
+     * @TransactionalEventListener가 AFTER_COMMIT 시점에 동작하도록 함
      */
+    @Transactional
     fun processPayment(orderId: Long, userId: Long): PaymentResult {
         // 주문 확인
         val order = orderService.getById(orderId)
