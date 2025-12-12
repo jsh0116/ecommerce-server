@@ -271,11 +271,15 @@ This e-commerce platform implements the following business capabilities:
 - Order cancellation with business rules (cannot cancel after shipping)
 - Stock reservation during order creation (15-minute TTL)
 
-### Inventory Management
-- Real-time stock tracking
-- Stock reservation system
-- Stock deduction on payment completion
-- Stock restoration on order cancellation
+### Inventory Management (2-Phase Reservation System)
+- Real-time stock tracking with safety stock management
+- **2-Phase Stock Reservation System:**
+  - **Phase 1 - Reserve**: `reserveStock()` increases `reservedStock` only (physicalStock unchanged)
+  - **Phase 2 - Confirm**: `confirmReservation()` decreases both `physicalStock` and `reservedStock`
+  - **Cancel**: `cancelReservation()` decreases `reservedStock` and restores availability
+- **Stock Availability Formula**: `availableStock = physicalStock - reservedStock - safetyStock`
+- Stock restoration on order cancellation or reservation expiration (15-minute TTL)
+- Prevents overselling while allowing concurrent reservations
 
 ### Coupon System
 - First-come-first-served coupon issuance with quantity limits
@@ -283,14 +287,25 @@ This e-commerce platform implements the following business capabilities:
 - User coupon management with expiration
 - Coupon usage tracking
 
-### Payment Flow
-1. Order creation validates stock and reserves inventory
-2. Payment validation checks user balance
-3. Payment completion triggers:
-   - Stock deduction
-   - Coupon usage
-   - Order status update to PAID
-   - External data transmission (with retry queue on failure)
+### Payment Flow (2-Phase Process)
+1. **Order Creation & Reservation:**
+   - Validates stock availability
+   - Reserves inventory (Phase 1: increases `reservedStock` only)
+   - Creates order with PENDING status
+   - Sets 15-minute TTL for reservation expiration
+
+2. **Payment Execution & Confirmation:**
+   - Validates user balance
+   - Confirms inventory reservation (Phase 2: decreases `physicalStock` and `reservedStock`)
+   - Uses coupon if applicable
+   - Updates order status to PAID
+   - Sends external data transmission (with retry queue on failure)
+
+3. **Cancellation & Restoration:**
+   - Cancels reservation (restores `reservedStock` to available)
+   - Refunds user balance
+   - Restores coupon if used
+   - Updates order status to CANCELLED
 
 ## Architecture Evolution & Refactoring
 
