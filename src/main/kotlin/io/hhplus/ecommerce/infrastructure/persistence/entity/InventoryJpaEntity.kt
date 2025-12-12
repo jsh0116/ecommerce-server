@@ -78,18 +78,20 @@ class InventoryJpaEntity(
      *
      * Step 09 동시성 제어: 실제 변경 전 검증
      * 비관적 락 획득 후 이 메서드로 안전성 확인
+     *
+     * 가용 재고 = physicalStock - reservedStock - safetyStock
      */
     fun canReserve(quantity: Int): Boolean {
-        return physicalStock >= quantity && quantity > 0
+        return getAvailableStock() >= quantity && quantity > 0
     }
 
     /**
      * 예약 확정 가능 여부 확인
      *
-     * 실제로 차감할 재고가 충분한지 확인
+     * 예약된 재고가 충분한지, 그리고 실제 재고가 충분한지 확인
      */
     fun canConfirmReservation(quantity: Int): Boolean {
-        return physicalStock >= quantity && quantity > 0
+        return reservedStock >= quantity && physicalStock >= quantity && quantity > 0
     }
 
     /**
@@ -100,8 +102,7 @@ class InventoryJpaEntity(
      */
     fun canCancelReservation(quantity: Int): Boolean {
         // 취소 요청이 예약된 재고를 초과하지 않는지 확인
-        // 음수 재고 방지
-        return quantity > 0 && quantity <= Int.MAX_VALUE
+        return quantity > 0 && reservedStock >= quantity
     }
 
     /**
@@ -117,34 +118,42 @@ class InventoryJpaEntity(
     /**
      * 재고 예약
      *
-     * 주문 생성 시 즉시 physicalStock을 감소시킴
-     * TTL 만료 시 복구됨
+     * 주문 생성 시 reservedStock을 증가시킴
+     * 결제 완료 시 confirmReservation()에서 physicalStock 감소
+     * TTL 만료 시 cancelReservation()으로 복구됨
      */
     fun reserve(quantity: Int) {
-        require(physicalStock >= quantity) {
+        require(canReserve(quantity)) {
             "재고 부족: 요청 ${quantity}개, 실제 재고 ${physicalStock}개 (SKU: $sku)"
         }
-        physicalStock -= quantity
+        reservedStock += quantity
         updateStatus()
     }
 
     /**
-     * 예약 확정 (이미 reserve()에서 physicalStock이 감소했으므로 상태만 업데이트)
+     * 예약 확정 (결제 완료 시 호출)
+     *
+     * reservedStock을 감소시키고 physicalStock도 감소시킴
      */
-    fun confirmReservation(@Suppress("UNUSED_PARAMETER") quantity: Int) {
-        // reserve()에서 이미 physicalStock이 감소했으므로 추가 감소 불필요
-        // 확정 시 reservedStock도 자동으로 0이 됨 (이미 reserve에서 처리됨)
+    fun confirmReservation(quantity: Int) {
+        require(reservedStock >= quantity) {
+            "예약 수량 부족: 요청 ${quantity}개, 예약 재고 ${reservedStock}개 (SKU: $sku)"
+        }
+        physicalStock -= quantity
+        reservedStock -= quantity
         updateStatus()
     }
 
     /**
-     * 예약 취소 (reserve()에서 감소한 physicalStock 복구)
+     * 예약 취소 (reserve()에서 증가한 reservedStock 복구)
      *
      * 결제 실패 또는 TTL 만료 시 호출
      */
     fun cancelReservation(quantity: Int) {
-        // reserve()에서 감소했던 physicalStock을 복구
-        physicalStock += quantity
+        require(reservedStock >= quantity) {
+            "취소할 예약 재고 부족: 요청 ${quantity}개, 예약 재고 ${reservedStock}개 (SKU: $sku)"
+        }
+        reservedStock -= quantity
         updateStatus()
     }
 

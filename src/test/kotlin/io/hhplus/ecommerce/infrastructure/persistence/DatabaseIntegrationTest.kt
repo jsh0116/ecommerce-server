@@ -24,6 +24,9 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.concurrent.CountDownLatch
@@ -40,7 +43,6 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("integration")
 @Tag("redis-required")
 @Import(TestContainersConfig::class, TestRedissonConfig::class, TestRedisConfig::class)
@@ -65,14 +67,20 @@ class DatabaseIntegrationTest {
     @Autowired
     private lateinit var reservationRepository: ReservationJpaRepository
 
+    @Autowired
+    private lateinit var entityManager: jakarta.persistence.EntityManager
+
+    @Autowired
+    private lateinit var jdbcTemplate: JdbcTemplate
+
     @BeforeEach
     fun setUp() {
-        // 데이터 정리
-        reservationRepository.deleteAll()
-        inventoryRepository.deleteAll()
-        paymentRepository.deleteAll()
+        // Raw SQL로 데이터 정리 (FK 제약 고려하여 순서대로 삭제)
+        jdbcTemplate.execute("DELETE FROM reservations")
+        jdbcTemplate.execute("DELETE FROM payments")
+        jdbcTemplate.execute("DELETE FROM inventory")
 
-        // 테스트용 재고 초기화
+        // 테스트용 재고 초기화 (reservedStock=0으로 초기화)
         inventoryService.createInventory(
             sku = "SKU-001",
             physicalStock = 100,
@@ -125,10 +133,12 @@ class DatabaseIntegrationTest {
         assertThat(successCount.get()).isEqualTo(threadCount)
         assertThat(failureCount.get()).isEqualTo(0)
 
-        // 재고 확인: physicalStock이 90으로 감소 (100 - 10 = 90)
+        // 재고 확인: 예약만 했으므로 physicalStock은 유지, reservedStock만 증가
         val updatedInventory = inventoryRepository.findBySku(sku)
         assertThat(updatedInventory).isNotNull
-        assertThat(updatedInventory!!.physicalStock).isEqualTo(90)
+        assertThat(updatedInventory!!.physicalStock).isEqualTo(100) // 예약만 했으므로 physicalStock 유지
+        assertThat(updatedInventory.reservedStock).isEqualTo(threadCount) // 10개 예약됨
+        assertThat(updatedInventory.getAvailableStock()).isEqualTo(80) // 가용 재고 = 100 - 10(reserved) - 10(safety) = 80
     }
 
     @Test
@@ -166,10 +176,12 @@ class DatabaseIntegrationTest {
         assertThat(successCount.get()).isEqualTo(threadCount)
         assertThat(failureCount.get()).isEqualTo(0)
 
-        // 재고 확인: 정확히 10개 차감 (100 - 10 = 90)
+        // 재고 확인: 정확히 10개 예약 (physicalStock은 유지, reservedStock만 증가)
         val updatedInventory = inventoryRepository.findBySku(sku)
         assertThat(updatedInventory).isNotNull
-        assertThat(updatedInventory!!.physicalStock).isEqualTo(90)
+        assertThat(updatedInventory!!.physicalStock).isEqualTo(100) // 예약만 했으므로 유지
+        assertThat(updatedInventory.reservedStock).isEqualTo(10) // 5 * 2 = 10개 예약
+        assertThat(updatedInventory.getAvailableStock()).isEqualTo(80) // 100 - 10(reserved) - 10(safety) = 80
     }
 
     // ========================================
@@ -336,10 +348,11 @@ class DatabaseIntegrationTest {
             quantity = quantity
         )
 
-        // 초기 검증: 예약 상태는 ACTIVE, 재고는 감소
+        // 초기 검증: 예약 상태는 ACTIVE, 재고는 예약됨
         assertThat(reservation.status).isEqualTo(ReservationStatusJpa.ACTIVE)
         val inventoryAfterReservation = inventoryRepository.findBySku(sku)
-        assertThat(inventoryAfterReservation!!.physicalStock).isEqualTo(initialStock - quantity)
+        assertThat(inventoryAfterReservation!!.physicalStock).isEqualTo(initialStock) // 예약만 했으므로 유지
+        assertThat(inventoryAfterReservation.reservedStock).isEqualTo(quantity) // 예약된 재고 증가
 
         // When: 예약의 expiresAt을 과거로 설정하여 만료된 상태 만들기
         val expiredReservation = reservationRepository.findByOrderId(orderId)!!
@@ -361,10 +374,12 @@ class DatabaseIntegrationTest {
         assertThat(result).isNotNull
         assertThat(result!!.status).isEqualTo(ReservationStatusJpa.EXPIRED)
 
-        // 재고 확인: 복구되어야 함
+        // 재고 확인: 예약 취소로 reservedStock이 감소
         val finalInventory = inventoryRepository.findBySku(sku)
         assertThat(finalInventory).isNotNull
-        assertThat(finalInventory!!.physicalStock).isEqualTo(initialStock)
+        assertThat(finalInventory!!.physicalStock).isEqualTo(initialStock) // physicalStock은 그대로
+        assertThat(finalInventory.reservedStock).isEqualTo(0) // 예약이 취소되어 0으로 복구
+        assertThat(finalInventory.getAvailableStock()).isEqualTo(90) // 가용 재고 = 100 - 0(reserved) - 10(safety) = 90
     }
 
     @Test
@@ -398,9 +413,10 @@ class DatabaseIntegrationTest {
         }
         reservationRepository.flush()  // DB에 즉시 반영
 
-        // 초기 재고 확인: 예약된 양이 차감됨 (100 - 2*3 = 94)
+        // 초기 재고 확인: 예약만 되고 physicalStock은 유지
         var inventory = inventoryRepository.findBySku(sku)
-        assertThat(inventory!!.physicalStock).isEqualTo(initialStock - (quantityPerReservation * reservationCount))
+        assertThat(inventory!!.physicalStock).isEqualTo(initialStock) // 예약만 했으므로 유지
+        assertThat(inventory.reservedStock).isEqualTo(quantityPerReservation * reservationCount) // 2*3 = 6개 예약됨
 
         // When: 만료된 예약 일괄 처리
         logger.info("만료된 예약 처리 시작: {} 개 예약", reservationCount)
@@ -416,9 +432,11 @@ class DatabaseIntegrationTest {
             assertThat(result?.status).isEqualTo(ReservationStatusJpa.EXPIRED)
         }
 
-        // 재고 복구 확인: 모두 복구됨 (94 + 2*3 = 100)
+        // 재고 복구 확인: reservedStock이 모두 취소됨
         inventory = inventoryRepository.findBySku(sku)
-        assertThat(inventory!!.physicalStock).isEqualTo(initialStock)
+        assertThat(inventory!!.physicalStock).isEqualTo(initialStock) // physicalStock은 그대로
+        assertThat(inventory.reservedStock).isEqualTo(0) // 모든 예약 취소
+        assertThat(inventory.getAvailableStock()).isEqualTo(90) // 가용 재고 = 100 - 0(reserved) - 10(safety) = 90
     }
 
     @Test
@@ -440,7 +458,8 @@ class DatabaseIntegrationTest {
         // 초기 상태
         assertThat(reservation.status).isEqualTo(ReservationStatusJpa.ACTIVE)
         var inventory = inventoryRepository.findBySku(sku)
-        assertThat(inventory!!.physicalStock).isEqualTo(initialStock - quantity)
+        assertThat(inventory!!.physicalStock).isEqualTo(initialStock) // 예약만 했으므로 유지
+        assertThat(inventory.reservedStock).isEqualTo(quantity) // 예약된 재고 증가
 
         // When: 아직 만료되지 않은 예약을 처리 시도
         val expiredCountBefore = reservationRepository.findByStatus(ReservationStatusJpa.EXPIRED).size
@@ -454,9 +473,10 @@ class DatabaseIntegrationTest {
         val stillActiveReservation = reservationRepository.findByOrderId(orderId)
         assertThat(stillActiveReservation!!.status).isEqualTo(ReservationStatusJpa.ACTIVE)
 
-        // 재고는 여전히 차감된 상태
+        // 재고는 예약만 되고 확정되지 않았으므로 physicalStock은 유지
         inventory = inventoryRepository.findBySku(sku)
-        assertThat(inventory!!.physicalStock).isEqualTo(initialStock - quantity)
+        assertThat(inventory!!.physicalStock).isEqualTo(initialStock) // 예약만 했으므로 physicalStock 유지
+        assertThat(inventory.reservedStock).isEqualTo(quantity) // 예약 재고는 그대로 유지
     }
 
     @Test

@@ -106,7 +106,7 @@ class ReservationServiceTest {
                 id = 1L,
                 sku = "SKU-001",
                 physicalStock = 80,
-                reservedStock = 0,
+                reservedStock = 20, // confirmReservation을 위해 예약된 재고 필요
                 safetyStock = 0,
                 status = StockStatus.IN_STOCK
             )
@@ -166,7 +166,7 @@ class ReservationServiceTest {
                 id = 1L,
                 sku = "SKU-001",
                 physicalStock = 80,
-                reservedStock = 0,
+                reservedStock = 20, // cancelReservation을 위해 예약된 재고 필요
                 safetyStock = 0,
                 status = StockStatus.IN_STOCK
             )
@@ -226,7 +226,7 @@ class ReservationServiceTest {
                 id = 1L,
                 sku = "SKU-001",
                 physicalStock = 80,
-                reservedStock = 0,
+                reservedStock = 20, // 만료된 예약 처리 시 cancelReservation 필요
                 safetyStock = 0,
                 status = StockStatus.IN_STOCK
             )
@@ -289,7 +289,7 @@ class ReservationServiceTest {
                 id = 1L,
                 sku = "SKU-001",
                 physicalStock = 80,
-                reservedStock = 0,
+                reservedStock = 20, // 예약 20개가 있음
                 safetyStock = 0,
                 status = StockStatus.IN_STOCK
             )
@@ -297,7 +297,7 @@ class ReservationServiceTest {
                 id = 2L,
                 sku = "SKU-002",
                 physicalStock = 70,
-                reservedStock = 0,
+                reservedStock = 30, // 예약 30개가 있음
                 safetyStock = 0,
                 status = StockStatus.IN_STOCK
             )

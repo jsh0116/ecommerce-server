@@ -3,6 +3,7 @@ package io.hhplus.ecommerce.application.saga
 import io.hhplus.ecommerce.application.services.CouponService
 import io.hhplus.ecommerce.application.services.OrderService
 import io.hhplus.ecommerce.application.services.UserService
+import io.hhplus.ecommerce.application.usecases.OrderUseCase
 import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import org.slf4j.LoggerFactory
@@ -28,7 +29,8 @@ class PaymentSagaOrchestrator(
     private val orderService: OrderService,
     private val userService: UserService,
     private val inventoryRepository: InventoryRepository,
-    private val couponService: CouponService
+    private val couponService: CouponService,
+    private val orderUseCase: OrderUseCase
 ) : SagaOrchestrator<PaymentSagaRequest, PaymentSagaResponse> {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -63,7 +65,7 @@ class PaymentSagaOrchestrator(
                     val inventory = inventoryRepository.findBySku(item.productId.toString())
                         ?: throw IllegalStateException("재고를 찾을 수 없습니다: ${item.productId}")
                     inventory.confirmReservation(item.quantity)
-                    inventoryRepository.save(inventory)
+                    inventoryRepository.update(inventory.sku, inventory)
                 }
             }
 
@@ -145,14 +147,15 @@ class PaymentSagaOrchestrator(
                         }
                     }
                     SagaStep.INVENTORY_CONFIRM -> {
-                        logger.info("[SAGA] 보상: 재고 복구")
+                        logger.info("[SAGA] 보상: 재고 예약 확정 취소")
                         val order = orderService.getById(request.orderId)
                         for (item in order.items) {
                             val inventory = inventoryRepository.findBySku(item.productId.toString())
                             if (inventory != null) {
+                                // confirmReservation으로 감소한 physicalStock을 복구
                                 inventory.restoreStock(item.quantity)
-                                inventoryRepository.save(inventory)
-                                logger.info("[SAGA] 재고 복구 완료: sku=${item.productId}, quantity=${item.quantity}")
+                                inventoryRepository.update(inventory.sku, inventory)
+                                logger.info("[SAGA] 재고 확정 취소 완료: sku=${item.productId}, quantity=${item.quantity}")
                             }
                         }
                     }
@@ -164,8 +167,17 @@ class PaymentSagaOrchestrator(
                     }
                     SagaStep.ORDER_CREATE -> {
                         logger.info("[SAGA] 보상: 주문 취소")
-                        orderService.cancelOrder(request.orderId, request.userId)
-                        logger.info("[SAGA] 주문 취소 완료: orderId=${request.orderId}")
+                        // INVENTORY_CONFIRM이 실행된 경우, 이미 INVENTORY_CONFIRM 보상에서 재고를 복구했으므로
+                        // 재고 예약 취소(cancelReservation)를 시도하면 안 됨 (reservedStock=0이므로 실패함)
+                        if (saga.completedSteps.contains(SagaStep.INVENTORY_CONFIRM)) {
+                            // INVENTORY_CONFIRM 보상이 이미 재고를 복구했으므로, 주문 상태만 취소
+                            orderService.cancelOrder(request.orderId, request.userId)
+                            logger.info("[SAGA] 주문 취소 완료 (재고는 INVENTORY_CONFIRM 보상에서 이미 복구됨): orderId=${request.orderId}")
+                        } else {
+                            // INVENTORY_CONFIRM이 실행되지 않았으므로, 재고 예약 취소 필요
+                            orderUseCase.cancelOrder(request.orderId, request.userId)
+                            logger.info("[SAGA] 주문 취소 및 재고 예약 취소 완료: orderId=${request.orderId}")
+                        }
                     }
                     SagaStep.ORDER_COMPLETE -> {
                         // 주문 완료는 마지막 단계이므로 보상 불필요

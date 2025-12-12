@@ -61,7 +61,7 @@ class InventoryServiceConcurrencyTest {
         val threadCount = 100
 
         // 초기 재고 생성
-        val inventory = inventoryRepository.save(
+        inventoryRepository.save(
             InventoryJpaEntity(
                 sku = sku,
                 physicalStock = initialStock,
@@ -78,7 +78,7 @@ class InventoryServiceConcurrencyTest {
         val latch = CountDownLatch(threadCount)
         val executor = Executors.newFixedThreadPool(10)
 
-        // When: 100개 스레드가 동시에 1개씩 구매 시도
+        // When: 100개 스레드가 동시에 1개씩 예약 → 확정 (2단계 프로세스)
         repeat(threadCount) { index ->
             executor.submit {
                 try {
@@ -92,21 +92,35 @@ class InventoryServiceConcurrencyTest {
             }
         }
 
-        // Awaitility로 모든 스레드 완료 대기 (CI 환경 안정성)
-        await("재고 100개 판매 완료")
+        // Awaitility로 모든 예약 완료 대기
+        await("재고 100개 예약 완료")
             .atMost(Duration.ofSeconds(30))
             .pollInterval(Duration.ofMillis(100))
             .untilAsserted {
                 assertThat(successCount.get()).isEqualTo(100)
             }
 
+        latch.await() // 예약 완료 대기
         executor.shutdown()
 
-        // Then
+        // Then: 예약 검증
+        val afterReserve = inventoryRepository.findBySku(sku)
+        assertThat(afterReserve).isNotNull
+        assertThat(failureCount.get()).isEqualTo(0)
+        assertThat(afterReserve!!.physicalStock).isEqualTo(100) // 예약만 했으므로 physicalStock 유지
+        assertThat(afterReserve.reservedStock).isEqualTo(100) // 100개 예약됨
+        assertThat(afterReserve.getAvailableStock()).isEqualTo(0) // 가용 재고 = 0
+
+        // 예약 확정 (결제 완료 시뮬레이션) - 순차적으로 처리
+        val inventory = inventoryRepository.findBySku(sku)!!
+        inventory.confirmReservation(100) // 한 번에 100개 확정
+        inventoryRepository.save(inventory)
+
+        // Then: 확정 검증
         val finalInventory = inventoryRepository.findBySku(sku)
         assertThat(finalInventory).isNotNull
-        assertThat(failureCount.get()).isEqualTo(0)
-        assertThat(finalInventory!!.physicalStock).isEqualTo(0)
+        assertThat(finalInventory!!.physicalStock).isEqualTo(0) // 100 - 100 = 0
+        assertThat(finalInventory.reservedStock).isEqualTo(0) // 100 - 100 = 0
         assertThat(finalInventory.status).isEqualTo(StockStatus.OUT_OF_STOCK)
     }
 
@@ -178,7 +192,9 @@ class InventoryServiceConcurrencyTest {
         assertThat(failureCount.get()).isEqualTo(1)
         // 핵심: 음수 재고 절대 안 됨
         assertThat(finalInventory!!.physicalStock).isGreaterThanOrEqualTo(0)
-        assertThat(finalInventory.physicalStock).isEqualTo(0)
+        assertThat(finalInventory.physicalStock).isEqualTo(100) // 예약만 했으므로 physicalStock 유지
+        assertThat(finalInventory.reservedStock).isEqualTo(100) // 100개 예약됨
+        assertThat(finalInventory.getAvailableStock()).isEqualTo(0) // 가용 재고는 0
     }
 
     /**
@@ -215,15 +231,17 @@ class InventoryServiceConcurrencyTest {
         // 1단계: 50개 예약
         inventoryService.reserveStock(sku, reserveQuantity)
         var inventory = inventoryRepository.findBySku(sku)
-        assertThat(inventory!!.physicalStock).isEqualTo(initialStock - reserveQuantity)
+        assertThat(inventory!!.physicalStock).isEqualTo(initialStock) // 예약만 했으므로 physicalStock 유지
+        assertThat(inventory.reservedStock).isEqualTo(reserveQuantity) // reservedStock만 증가
 
         // 2단계: 20개 취소
         inventoryService.cancelReservation(sku, cancelQuantity)
         inventory = inventoryRepository.findBySku(sku)
 
         // Then
-        val expectedStock = initialStock - reserveQuantity + cancelQuantity
-        assertThat(inventory!!.physicalStock).isEqualTo(expectedStock)
+        assertThat(inventory!!.physicalStock).isEqualTo(initialStock) // physicalStock은 여전히 100
+        assertThat(inventory.reservedStock).isEqualTo(reserveQuantity - cancelQuantity) // 50 - 20 = 30
+        assertThat(inventory.getAvailableStock()).isEqualTo(initialStock - (reserveQuantity - cancelQuantity)) // 100 - 30 = 70
     }
 
     /**
@@ -257,39 +275,47 @@ class InventoryServiceConcurrencyTest {
             )
         )
 
-        val totalThreads = reserveThreadCount + cancelThreadCount
-        val latch = CountDownLatch(totalThreads)
-        val executor = Executors.newFixedThreadPool(totalThreads)
+        val reserveLatch = CountDownLatch(reserveThreadCount)
+        val cancelLatch = CountDownLatch(cancelThreadCount)
+        val executor = Executors.newFixedThreadPool(8)
 
         // When
-        // 예약 스레드들
+        // 1단계: 예약 스레드들 (먼저 실행)
         repeat(reserveThreadCount) {
             executor.submit {
                 try {
                     inventoryService.reserveStock(sku, quantityPerThread)
                 } finally {
-                    latch.countDown()
+                    reserveLatch.countDown()
                 }
             }
         }
 
-        // 취소 스레드들
+        // 예약 완료 대기
+        await("예약 완료")
+            .atMost(Duration.ofSeconds(30))
+            .pollInterval(Duration.ofMillis(100))
+            .untilAsserted {
+                assertThat(reserveLatch.count).isEqualTo(0)
+            }
+
+        // 2단계: 취소 스레드들 (예약 완료 후 실행)
         repeat(cancelThreadCount) {
             executor.submit {
                 try {
                     inventoryService.cancelReservation(sku, quantityPerThread)
                 } finally {
-                    latch.countDown()
+                    cancelLatch.countDown()
                 }
             }
         }
 
-        // Awaitility로 모든 스레드 완료 대기 (CI 환경 안정성)
-        await("동시 예약과 취소 완료")
+        // 취소 완료 대기
+        await("취소 완료")
             .atMost(Duration.ofSeconds(30))
             .pollInterval(Duration.ofMillis(100))
             .untilAsserted {
-                assertThat(latch.count).isEqualTo(0)
+                assertThat(cancelLatch.count).isEqualTo(0)
             }
 
         executor.shutdown()
@@ -298,8 +324,9 @@ class InventoryServiceConcurrencyTest {
         val finalInventory = inventoryRepository.findBySku(sku)
         assertThat(finalInventory).isNotNull
 
-        val expectedStock = initialStock - (reserveThreadCount * quantityPerThread) + (cancelThreadCount * quantityPerThread)
-        assertThat(finalInventory!!.physicalStock).isEqualTo(expectedStock)
+        assertThat(finalInventory!!.physicalStock).isEqualTo(initialStock) // physicalStock은 그대로
+        assertThat(finalInventory.reservedStock).isEqualTo((reserveThreadCount - cancelThreadCount) * quantityPerThread) // (5-3)*10 = 20
+        assertThat(finalInventory.getAvailableStock()).isEqualTo(initialStock - (reserveThreadCount - cancelThreadCount) * quantityPerThread) // 100 - 20 = 80
     }
 
     /**
@@ -477,7 +504,9 @@ class InventoryServiceConcurrencyTest {
         assertThat(elapsed).isLessThan(60000) // 60초 이내 (비관적 락 오버헤드 감안)
 
         val finalInventory = inventoryRepository.findBySku(sku)
-        assertThat(finalInventory!!.physicalStock).isEqualTo(0)
+        assertThat(finalInventory!!.physicalStock).isEqualTo(initialStock) // 예약만 했으므로 physicalStock 유지
+        assertThat(finalInventory.reservedStock).isEqualTo(threadCount) // 1000개 예약됨
+        assertThat(finalInventory.getAvailableStock()).isEqualTo(0)
 
         // 성능 로그
         println("✅ 1000개 요청 처리 완료")

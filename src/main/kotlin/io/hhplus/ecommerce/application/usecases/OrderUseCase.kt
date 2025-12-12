@@ -45,7 +45,7 @@ class OrderUseCase(
         // 사용자 확인
         val user = userService.getById(userId)
 
-        // 상품 및 재고 확인
+        // 상품 및 재고 확인 및 예약
         val orderItems = mutableListOf<OrderItem>()
         for (req in items) {
             val product = productService.getById(req.productId)
@@ -61,6 +61,10 @@ class OrderUseCase(
                     required = req.quantity
                 )
             }
+
+            // 재고 예약 (reservedStock 증가)
+            inventory.reserve(req.quantity)
+            inventoryRepository.update(inventory.sku, inventory)
 
             orderItems.add(OrderItem.create(product, req.quantity))
         }
@@ -102,17 +106,18 @@ class OrderUseCase(
     }
 
     /**
-     * 주문 취소 및 재고 복구
+     * 주문 취소 및 재고 예약 취소
      */
+    @Transactional
     fun cancelOrder(orderId: Long, userId: Long): Order {
         val order = orderService.cancelOrder(orderId, userId)
 
-        // 재고 복구
+        // 재고 예약 취소 (createOrder에서 reserve()로 증가한 reservedStock 감소)
         for (item in order.items) {
             val inventory = inventoryRepository.findBySku(item.productId.toString())
             if (inventory != null) {
-                inventory.restoreStock(item.quantity)
-                inventoryRepository.save(inventory)
+                inventory.cancelReservation(item.quantity)
+                inventoryRepository.update(inventory.sku, inventory)
             }
         }
 
@@ -148,7 +153,7 @@ class OrderUseCase(
 
             // 실제 재고 차감
             inventory.confirmReservation(item.quantity)
-            inventoryRepository.save(inventory)
+            inventoryRepository.update(inventory.sku, inventory)
 
             // 판매량 증가 (인기 상품 집계용)
             productUseCase.recordSale(item.productId, item.quantity)
