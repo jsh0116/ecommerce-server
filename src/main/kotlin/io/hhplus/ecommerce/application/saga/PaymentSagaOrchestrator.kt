@@ -43,8 +43,14 @@ class PaymentSagaOrchestrator(
     private val eventPublisher: ApplicationEventPublisher,
     private val sagaRepository: SagaInstanceJpaRepository,
     private val idempotencyService: IdempotencyService,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val applicationContext: org.springframework.context.ApplicationContext
 ) : SagaOrchestrator<PaymentSagaRequest, PaymentSagaResponse> {
+
+    // Self-reference to get Spring proxy for @Transactional propagation
+    private val self: PaymentSagaOrchestrator by lazy {
+        applicationContext.getBean(PaymentSagaOrchestrator::class.java)
+    }
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -85,7 +91,7 @@ class PaymentSagaOrchestrator(
             userId = request.userId,
             status = SagaStatus.PENDING
         )
-        sagaRepository.save(sagaEntity)
+        self.saveSagaInNewTransaction(sagaEntity)
 
         logger.info("[SAGA] 결제 SAGA 시작: sagaId=$sagaId, orderId=${request.orderId}")
 
@@ -129,7 +135,7 @@ class PaymentSagaOrchestrator(
             }
 
             sagaEntity.markAsCompleted()
-            sagaRepository.save(sagaEntity)
+            self.saveSagaInNewTransaction(sagaEntity)
             logger.info("[SAGA] 결제 SAGA 성공: sagaId=$sagaId")
 
             // SAGA 성공 시 OrderPaidEvent 발행
@@ -153,17 +159,17 @@ class PaymentSagaOrchestrator(
         } catch (e: Exception) {
             logger.error("[SAGA] 결제 SAGA 실패: sagaId=$sagaId, currentStep=${sagaEntity.currentStep}", e)
             sagaEntity.markAsCompensating(e.message ?: "알 수 없는 오류")
-            sagaRepository.save(sagaEntity)
+            self.saveSagaInNewTransaction(sagaEntity)
 
-            // 보상 트랜잭션 실행
+            // 보상 트랜잭션 실행 (별도 트랜잭션)
             try {
-                compensate(sagaEntity, request)
+                self.compensate(sagaEntity, request)
                 sagaEntity.markAsFailed(e.message ?: "결제 실패")
-                sagaRepository.save(sagaEntity)
+                self.saveSagaInNewTransaction(sagaEntity)
                 logger.info("[SAGA] 보상 트랜잭션 완료: sagaId=$sagaId")
             } catch (compensationError: Exception) {
                 sagaEntity.markAsStuck(compensationError.message ?: "보상 실패")
-                sagaRepository.save(sagaEntity)
+                self.saveSagaInNewTransaction(sagaEntity)
                 logger.error("[SAGA] 보상 트랜잭션 실패 - 수동 처리 필요: sagaId=$sagaId", compensationError)
             }
 
@@ -187,20 +193,31 @@ class PaymentSagaOrchestrator(
      */
     private fun <T> executeStep(sagaEntity: SagaInstanceJpaEntity, step: SagaStep, action: () -> T): T {
         sagaEntity.markAsRunning(step.name)
-        sagaRepository.save(sagaEntity)
+        self.saveSagaInNewTransaction(sagaEntity)
 
         val result = action()
 
         sagaEntity.addCompletedStep(step.name)
-        sagaRepository.save(sagaEntity)
+        self.saveSagaInNewTransaction(sagaEntity)
 
         return result
     }
 
     /**
-     * 보상 트랜잭션 실행 (역순)
+     * SAGA 상태를 별도 트랜잭션으로 저장
+     * (메인 트랜잭션 롤백 시에도 SAGA 상태 유지)
      */
-    private fun compensate(sagaEntity: SagaInstanceJpaEntity, request: PaymentSagaRequest) {
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    fun saveSagaInNewTransaction(sagaEntity: SagaInstanceJpaEntity) {
+        sagaRepository.save(sagaEntity)
+    }
+
+    /**
+     * 보상 트랜잭션 실행 (역순)
+     * 별도 트랜잭션으로 실행하여 메인 트랜잭션 롤백 시에도 보상이 유지되도록 함
+     */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    fun compensate(sagaEntity: SagaInstanceJpaEntity, request: PaymentSagaRequest) {
         val completedSteps = sagaEntity.getCompletedSteps()
         logger.info("[SAGA] 보상 트랜잭션 시작: sagaId=${sagaEntity.sagaId}, completedSteps=$completedSteps")
 
