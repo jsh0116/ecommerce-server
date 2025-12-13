@@ -62,6 +62,7 @@ class OrderUseCaseTest {
             every { userService.getById(1L) } returns user
             every { productService.getById(1L) } returns product
             every { inventoryRepository.findBySku("1") } returns inventory
+            every { inventoryRepository.update("1", any()) } just runs
             every { orderService.createOrder(user, orderItems, null) } returns order
 
             // When
@@ -157,7 +158,7 @@ class OrderUseCaseTest {
 
             every { orderService.cancelOrder(1L, 1L) } returns order
             every { inventoryRepository.findBySku("1") } returns inventory
-            every { inventoryRepository.save(any()) } just runs
+            every { inventoryRepository.update("1", any()) } just runs
 
             // When
             val result = useCase.cancelOrder(1L, 1L)
@@ -165,7 +166,7 @@ class OrderUseCaseTest {
             // Then
             assertThat(result).isNotNull
             verify { orderService.cancelOrder(1L, 1L) }
-            verify { inventoryRepository.save(any()) }
+            verify { inventoryRepository.update("1", any()) }
         }
     }
 
@@ -184,7 +185,7 @@ class OrderUseCaseTest {
             every { orderService.getById(1L) } returns order
             every { userService.deductBalance(1L, 100000L) } returns user
             every { inventoryRepository.findBySku("1") } returns inventory
-            every { inventoryRepository.save(any()) } just runs
+            every { inventoryRepository.update("1", any()) } just runs
             every { productUseCase.recordSale(any(), any()) } just runs
             every { orderService.completeOrder(1L) } returns completedOrder
 

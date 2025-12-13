@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.cache.CacheManager
 import org.springframework.context.annotation.Import
+import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.ActiveProfiles
 import java.time.LocalDateTime
 
@@ -34,6 +35,9 @@ class CachingIntegrationTest {
 
     @Autowired
     private lateinit var cacheManager: CacheManager
+
+    @Autowired
+    private lateinit var entityManager: jakarta.persistence.EntityManager
 
     private val testSku = "TEST-SKU-001"
 
@@ -124,9 +128,11 @@ class CachingIntegrationTest {
             // When - 재고 예약 (CacheEvict 발동)
             inventoryService.reserveStock(testSku, 10)
 
-            // Then - 변경된 데이터 반환 (physicalStock이 감소)
+            // Then - 변경된 데이터 반환 (reservedStock이 증가, physicalStock은 유지)
             val after = inventoryService.getInventory(testSku)
-            assertThat(after?.physicalStock).isEqualTo(90)
+            assertThat(after?.physicalStock).isEqualTo(100) // 예약만 했으므로 유지
+            assertThat(after?.reservedStock).isEqualTo(10) // 10개 예약됨
+            assertThat(after?.getAvailableStock()).isEqualTo(80) // 가용 재고 = 100 - 10(reserved) - 10(safety) = 80
         }
 
         @Test

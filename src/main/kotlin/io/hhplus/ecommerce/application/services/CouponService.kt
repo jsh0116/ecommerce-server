@@ -15,11 +15,11 @@ class CouponService(
             ?: throw CouponException.CouponNotFound(couponId.toString())
     }
 
-    fun validateUserCoupon(userId: Long, couponId: Long): UserCoupon {
+    fun validateUserCoupon(userId: Long, couponId: Long, skipUsedCheck: Boolean = false): UserCoupon {
         val userCoupon = couponRepository.findUserCoupon(userId, couponId)
             ?: throw CouponException.CouponNotFound("User coupon not found")
 
-        if (!userCoupon.isValid()) {
+        if (!skipUsedCheck && !userCoupon.isValid()) {
             throw CouponException.InvalidCoupon()
         }
 

@@ -3,9 +3,12 @@ package io.hhplus.ecommerce.infrastructure.persistence.adapter
 import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.infrastructure.repositories.OrderRepository
 import io.hhplus.ecommerce.infrastructure.persistence.repository.OrderJpaRepository
+import io.hhplus.ecommerce.infrastructure.persistence.repository.OrderItemJpaRepository
 import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderJpaEntity
+import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderItemJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.OrderJpaStatus
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
 
 /**
  * OrderRepository JPA 어댑터
@@ -14,27 +17,47 @@ import org.springframework.stereotype.Repository
  */
 @Repository
 class OrderRepositoryAdapter(
-    private val jpaRepository: OrderJpaRepository
+    private val jpaRepository: OrderJpaRepository,
+    private val orderItemJpaRepository: OrderItemJpaRepository
 ) : OrderRepository {
 
+    @Transactional
     override fun save(order: Order): Order {
         val entity = order.toEntity()
         val savedEntity = jpaRepository.save(entity)
-        return savedEntity.toDomain()
+
+        // OrderItem 저장 (기존 아이템 삭제 후 새로 저장)
+        orderItemJpaRepository.deleteByOrderId(savedEntity.id)
+        val orderItems = order.items.map { OrderItemJpaEntity.fromDomain(savedEntity.id, it) }
+        orderItemJpaRepository.saveAll(orderItems)
+
+        return savedEntity.toDomain(orderItems.map { it.toDomain() })
     }
 
     override fun findById(id: Long): Order? {
-        return jpaRepository.findById(id).orElse(null)?.toDomain()
+        val entity = jpaRepository.findById(id).orElse(null) ?: return null
+        val items = orderItemJpaRepository.findByOrderId(id).map { it.toDomain() }
+        return entity.toDomain(items)
     }
 
     override fun findByUserId(userId: Long): List<Order> {
-        return jpaRepository.findByUserId(userId).map { it.toDomain() }
+        return jpaRepository.findByUserId(userId).map { entity ->
+            val items = orderItemJpaRepository.findByOrderId(entity.id).map { it.toDomain() }
+            entity.toDomain(items)
+        }
     }
 
+    @Transactional
     override fun update(order: Order): Order {
         val entity = order.toEntity()
         val updatedEntity = jpaRepository.save(entity)
-        return updatedEntity.toDomain()
+
+        // OrderItem 업데이트
+        orderItemJpaRepository.deleteByOrderId(updatedEntity.id)
+        val orderItems = order.items.map { OrderItemJpaEntity.fromDomain(updatedEntity.id, it) }
+        orderItemJpaRepository.saveAll(orderItems)
+
+        return updatedEntity.toDomain(orderItems.map { it.toDomain() })
     }
 
     /**
@@ -58,6 +81,7 @@ class OrderRepositoryAdapter(
             discountAmount = this.discountAmount,
             finalAmount = this.finalAmount,
             couponCode = null,
+            couponId = this.couponId,
             pointsUsed = 0L,
             createdAt = this.createdAt,
             updatedAt = this.createdAt,
@@ -68,11 +92,11 @@ class OrderRepositoryAdapter(
     /**
      * JPA Entity를 Domain Order로 변환
      */
-    private fun OrderJpaEntity.toDomain(): Order {
+    private fun OrderJpaEntity.toDomain(items: List<io.hhplus.ecommerce.domain.OrderItem>): Order {
         return Order(
             id = this.id,
             userId = this.userId,
-            items = emptyList(), // 주문 항목은 별도의 리포지토리에서 조회
+            items = items,
             totalAmount = this.totalAmount,
             discountAmount = this.discountAmount,
             finalAmount = this.finalAmount,
@@ -84,7 +108,7 @@ class OrderRepositoryAdapter(
                 OrderJpaStatus.DELIVERED -> "DELIVERED"
                 OrderJpaStatus.CANCELLED -> "CANCELLED"
             },
-            couponId = null,
+            couponId = this.couponId,
             createdAt = this.createdAt,
             paidAt = this.paidAt
         )

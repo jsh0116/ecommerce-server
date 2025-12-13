@@ -54,6 +54,9 @@ class OrderJpaEntity(
     @Column(length = 50)
     var couponCode: String? = null,
 
+    @Column
+    var couponId: Long? = null,
+
     @Column(nullable = false)
     var pointsUsed: Long = 0,
 

@@ -15,6 +15,8 @@ import io.hhplus.ecommerce.application.usecases.ProductUseCase
 import io.hhplus.ecommerce.application.usecases.InventoryUseCase
 import io.hhplus.ecommerce.presentation.dto.ShippingAddressRequest
 import io.hhplus.ecommerce.infrastructure.util.toUuid
+import io.hhplus.ecommerce.dto.TransmissionStatusResponse
+import io.hhplus.ecommerce.infrastructure.persistence.repository.DataTransmissionLogJpaRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -39,7 +41,8 @@ import java.time.format.DateTimeFormatter
 class OrderController(
     private val orderUseCase: OrderUseCase,
     private val productUseCase: ProductUseCase,
-    private val inventoryUseCase: InventoryUseCase
+    private val inventoryUseCase: InventoryUseCase,
+    private val transmissionLogRepository: DataTransmissionLogJpaRepository
 ) {
 
     private val dateFormatter = DateTimeFormatter.ISO_DATE_TIME
@@ -372,6 +375,27 @@ class OrderController(
                     )
                 )
         }
+    }
+
+    /**
+     * 주문 외부 전송 상태 조회
+     *
+     * 주문 완료 후 외부 시스템으로 데이터 전송 상태를 조회합니다.
+     * 비동기 작업의 진행 상황을 확인할 수 있습니다.
+     */
+    @GetMapping("/{orderId}/transmission-status")
+    @Operation(summary = "주문 외부 전송 상태 조회", description = "주문 완료 후 외부 시스템 데이터 전송 상태를 조회합니다.")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "조회 성공"),
+        ApiResponse(responseCode = "404", description = "전송 이력 없음", content = [Content()])
+    )
+    fun getTransmissionStatus(
+        @PathVariable @Parameter(description = "주문 ID") orderId: Long
+    ): ResponseEntity<TransmissionStatusResponse> {
+        val log = transmissionLogRepository.findByOrderId(orderId)
+            ?: return ResponseEntity.notFound().build()
+
+        return ResponseEntity.ok(TransmissionStatusResponse.from(log))
     }
 
 }
