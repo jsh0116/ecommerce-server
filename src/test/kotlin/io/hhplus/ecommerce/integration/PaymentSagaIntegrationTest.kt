@@ -3,8 +3,8 @@ package io.hhplus.ecommerce.integration
 import io.hhplus.ecommerce.application.saga.PaymentSagaOrchestrator
 import io.hhplus.ecommerce.application.saga.PaymentSagaRequest
 import io.hhplus.ecommerce.application.saga.SagaExecutionException
-import io.hhplus.ecommerce.application.saga.SagaStatus
 import io.hhplus.ecommerce.application.saga.SagaStep
+import io.hhplus.ecommerce.infrastructure.persistence.entity.SagaStatus
 import io.hhplus.ecommerce.application.usecases.OrderUseCase
 import io.hhplus.ecommerce.config.TestContainersConfig
 import io.hhplus.ecommerce.config.TestRedissonConfig
@@ -135,7 +135,7 @@ class PaymentSagaIntegrationTest : IntegrationTestBase() {
         assertThat(saga).isNotNull
         assertThat(saga?.status).isEqualTo(SagaStatus.COMPLETED)
         // 쿠폰 없으므로 4단계: ORDER_CREATE, USER_BALANCE_DEDUCT, INVENTORY_CONFIRM, ORDER_COMPLETE
-        assertThat(saga?.completedSteps?.size).isEqualTo(4)
+        assertThat(saga?.getCompletedSteps()?.size).isEqualTo(4)
 
         // 주문 상태 확인
         val order = orderRepository.findById(orderId).orElse(null)
