@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.saga
 
+import io.hhplus.ecommerce.application.events.OrderPaidEvent
 import io.hhplus.ecommerce.application.services.CouponService
 import io.hhplus.ecommerce.application.services.OrderService
 import io.hhplus.ecommerce.application.services.UserService
@@ -7,6 +8,7 @@ import io.hhplus.ecommerce.application.usecases.OrderUseCase
 import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
 import java.util.*
 
@@ -30,7 +32,8 @@ class PaymentSagaOrchestrator(
     private val userService: UserService,
     private val inventoryRepository: InventoryRepository,
     private val couponService: CouponService,
-    private val orderUseCase: OrderUseCase
+    private val orderUseCase: OrderUseCase,
+    private val eventPublisher: ApplicationEventPublisher
 ) : SagaOrchestrator<PaymentSagaRequest, PaymentSagaResponse> {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -86,6 +89,9 @@ class PaymentSagaOrchestrator(
 
             saga.markAsCompleted()
             logger.info("[SAGA] 결제 SAGA 성공: sagaId=$sagaId")
+
+            // SAGA 성공 시 OrderPaidEvent 발행
+            publishOrderPaidEvent(completedOrder)
 
             return PaymentSagaResponse(
                 sagaId = sagaId,
@@ -196,6 +202,26 @@ class PaymentSagaOrchestrator(
      */
     fun getSagaInstance(sagaId: String): SagaInstance? {
         return sagaInstances[sagaId]
+    }
+
+    /**
+     * OrderPaidEvent 발행
+     *
+     * SAGA가 성공적으로 완료되면 OrderPaidEvent를 발행하여
+     * 외부 데이터 전송, 알림톡, 포인트 적립 등의 비동기 작업을 트리거합니다.
+     */
+    private fun publishOrderPaidEvent(order: Order) {
+        val event = OrderPaidEvent(
+            orderId = order.id,
+            userId = order.userId,
+            items = order.items,
+            totalAmount = order.totalAmount,
+            discountAmount = order.discountAmount,
+            paidAt = order.paidAt ?: java.time.LocalDateTime.now()
+        )
+
+        logger.info("[SAGA] OrderPaidEvent 발행: orderId=${order.id}, userId=${order.userId}")
+        eventPublisher.publishEvent(event)
     }
 }
 
