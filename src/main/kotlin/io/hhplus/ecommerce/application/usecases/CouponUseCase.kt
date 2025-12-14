@@ -98,11 +98,57 @@ class CouponUseCase(
     }
 
     fun validateCoupon(couponCode: String, orderAmount: Long): CouponValidationResult {
+        // 1. 쿠폰 코드로 쿠폰 조회
+        val coupon = couponService.findByCode(couponCode)
+            ?: return CouponValidationResult(
+                valid = false,
+                coupon = null,
+                discount = 0L,
+                message = "쿠폰을 찾을 수 없습니다"
+            )
+
+        // 2. 최소 주문 금액 확인
+        if (orderAmount < coupon.minOrderAmount) {
+            return CouponValidationResult(
+                valid = false,
+                coupon = coupon,
+                discount = 0L,
+                message = "최소 주문 금액(${coupon.minOrderAmount}원)을 충족하지 못했습니다"
+            )
+        }
+
+        // 3. 쿠폰 사용 기간 확인
+        val now = LocalDateTime.now()
+        if (now.isBefore(coupon.startDate) || now.isAfter(coupon.endDate)) {
+            return CouponValidationResult(
+                valid = false,
+                coupon = coupon,
+                discount = 0L,
+                message = "쿠폰 사용 기간이 아닙니다 (${coupon.startDate} ~ ${coupon.endDate})"
+            )
+        }
+
+        // 4. 할인 금액 계산
+        val discount = when (coupon.type) {
+            io.hhplus.ecommerce.domain.CouponType.FIXED_AMOUNT -> coupon.discount
+            io.hhplus.ecommerce.domain.CouponType.PERCENTAGE -> {
+                val calculatedDiscount = (orderAmount * coupon.discountRate / 100)
+                // 최대 할인 금액 제한이 있으면 적용
+                if (coupon.maxDiscountAmount != null) {
+                    minOf(calculatedDiscount, coupon.maxDiscountAmount)
+                } else {
+                    calculatedDiscount
+                }
+            }
+            else -> 0L
+        }
+
+        // 5. 검증 성공
         return CouponValidationResult(
-            valid = false,
-            coupon = null,
-            discount = 0L,
-            message = "쿠폰 검증 기능이 아직 구현되지 않았습니다"
+            valid = true,
+            coupon = coupon,
+            discount = discount,
+            message = "쿠폰 검증 성공"
         )
     }
 

@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional
  * 2. 상품 및 재고 검증/예약 → OrderValidator + OrderExecutor
  * 3. 쿠폰 검증 → OrderValidator
  * 4. 주문 생성 → OrderExecutor
- * 5. 이벤트 발행 (미래) → OrderEventPublisher
+ * 5. 이벤트 발행 → OrderEventPublisher (OrderCreatedEvent / OrderCancelledEvent)
  */
 @Service
 class OrderCreationService(
@@ -61,8 +61,8 @@ class OrderCreationService(
         // 4. 주문 생성 (OrderExecutor)
         val order = orderExecutor.createOrder(user, orderItems, userCoupon)
 
-        // 5. 이벤트 발행 (OrderEventPublisher - 미래 확장용)
-        // orderEventPublisher.publishOrderCreatedEvent(order)
+        // 5. 이벤트 발행 (OrderEventPublisher)
+        orderEventPublisher.publishOrderCreatedEvent(order)
 
         return order
     }
@@ -86,8 +86,8 @@ class OrderCreationService(
         // 2. 재고 예약 취소 (OrderExecutor)
         orderExecutor.cancelReservations(order.items)
 
-        // 3. 이벤트 발행 (OrderEventPublisher - 미래 확장용)
-        // orderEventPublisher.publishOrderCancelledEvent(order)
+        // 3. 이벤트 발행 (OrderEventPublisher)
+        orderEventPublisher.publishOrderCancelledEvent(order)
 
         return order
     }

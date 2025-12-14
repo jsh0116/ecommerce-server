@@ -150,13 +150,9 @@ class OrderController(
         }
 
         // 쿠폰 검증 및 할인 계산
+        // 참고: 실제 시스템에서는 couponId를 사용하며, OrderUseCase.createOrder()를 통해 처리됩니다.
+        // 이 예제 엔드포인트에서는 couponCode 검증 기능이 구현되어 있지 않아 할인이 적용되지 않습니다.
         var discountAmount = 0L
-        if (!request.couponCode.isNullOrBlank()) {
-            // TODO: CouponService를 통한 쿠폰 검증 로직
-            // val validationResult = couponService.validateCoupon(request.couponCode, totalAmount)
-            // 현재는 간단히 처리
-            discountAmount = 0L
-        }
 
         // 포인트 사용 처리
         val pointsUsed = minOf(request.pointsToUse, totalAmount)

@@ -1,5 +1,9 @@
 package io.hhplus.ecommerce.application.services
 
+import io.hhplus.ecommerce.application.events.CouponExhaustedEvent
+import io.hhplus.ecommerce.application.events.CouponIssuedEvent
+import io.hhplus.ecommerce.domain.Coupon
+import io.hhplus.ecommerce.domain.UserCoupon
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
@@ -10,8 +14,9 @@ import org.springframework.stereotype.Component
  * 쿠폰 관련 이벤트 발행을 담당합니다.
  * Single Responsibility: 이벤트 발행만 집중
  *
- * 현재는 사용하지 않지만, 향후 CouponIssuedEvent 등을
- * 추가할 때 사용할 수 있도록 구조만 준비해둡니다.
+ * 발행하는 이벤트:
+ * - CouponIssuedEvent: 쿠폰 발급 시
+ * - CouponExhaustedEvent: 쿠폰 소진 시
  */
 @Component
 class CouponEventPublisher(
@@ -20,33 +25,24 @@ class CouponEventPublisher(
     private val logger = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 쿠폰 발급 이벤트 발행 (미래 확장용)
+     * 쿠폰 발급 이벤트 발행
      *
-     * @param couponId 쿠폰 ID
-     * @param userId 사용자 ID
+     * @param userCoupon 발급된 사용자 쿠폰
      * @param remainingQuantity 남은 수량
      */
-    fun publishCouponIssuedEvent(couponId: Long, userId: Long, remainingQuantity: Long) {
-        // TODO: CouponIssuedEvent 구현 시 활성화
-        // eventPublisher.publishEvent(
-        //     CouponIssuedEvent(
-        //         couponId = couponId,
-        //         userId = userId,
-        //         remainingQuantity = remainingQuantity,
-        //         issuedAt = LocalDateTime.now()
-        //     )
-        // )
-        logger.debug("CouponIssuedEvent 발행 (미구현): couponId={}, userId={}, remaining={}", couponId, userId, remainingQuantity)
+    fun publishCouponIssuedEvent(userCoupon: UserCoupon, remainingQuantity: Long) {
+        eventPublisher.publishEvent(CouponIssuedEvent.from(userCoupon, remainingQuantity))
+        logger.debug("CouponIssuedEvent 발행: couponId={}, userId={}, remaining={}",
+            userCoupon.couponId, userCoupon.userId, remainingQuantity)
     }
 
     /**
-     * 쿠폰 소진 이벤트 발행 (미래 확장용)
+     * 쿠폰 소진 이벤트 발행
      *
-     * @param couponId 쿠폰 ID
+     * @param coupon 소진된 쿠폰
      */
-    fun publishCouponExhaustedEvent(couponId: Long) {
-        // TODO: CouponExhaustedEvent 구현 시 활성화
-        // eventPublisher.publishEvent(CouponExhaustedEvent(couponId = couponId))
-        logger.debug("CouponExhaustedEvent 발행 (미구현): couponId={}", couponId)
+    fun publishCouponExhaustedEvent(coupon: Coupon) {
+        eventPublisher.publishEvent(CouponExhaustedEvent.from(coupon))
+        logger.debug("CouponExhaustedEvent 발행: couponId={}", coupon.id)
     }
 }

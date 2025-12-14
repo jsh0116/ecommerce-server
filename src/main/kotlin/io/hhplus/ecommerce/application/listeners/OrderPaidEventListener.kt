@@ -2,6 +2,8 @@ package io.hhplus.ecommerce.application.listeners
 
 import io.hhplus.ecommerce.application.events.OrderPaidEvent
 import io.hhplus.ecommerce.application.services.DataTransmissionService
+import io.hhplus.ecommerce.application.services.NotificationService
+import io.hhplus.ecommerce.application.services.PointService
 import io.hhplus.ecommerce.application.services.TransmissionLogService
 import io.hhplus.ecommerce.dto.DataPayload
 import org.slf4j.LoggerFactory
@@ -13,16 +15,21 @@ import org.springframework.transaction.event.TransactionalEventListener
 /**
  * 주문 결제 완료 이벤트 리스너
  *
- * OrderPaidEvent 발행 시 외부 시스템으로 데이터를 전송합니다.
+ * OrderPaidEvent 발행 시 다음 작업을 수행합니다:
+ * 1. 외부 시스템 데이터 전송
+ * 2. 주문 완료 알림톡 발송
+ * 3. 구매 포인트 적립
+ *
  * @TransactionalEventListener(phase = AFTER_COMMIT)을 통해
  * 트랜잭션이 성공적으로 커밋된 이후에만 이벤트가 처리됩니다.
  * @Async를 통해 DB 트랜잭션과 분리된 비동기 스레드에서 실행됩니다.
- * 외부 시스템 전송 실패는 재시도 큐에 저장되어 별도로 처리됩니다.
  */
 @Component
 class OrderPaidEventListener(
     private val dataTransmissionService: DataTransmissionService?,
-    private val transmissionLogService: TransmissionLogService
+    private val transmissionLogService: TransmissionLogService,
+    private val notificationService: NotificationService,
+    private val pointService: PointService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -89,13 +96,13 @@ class OrderPaidEventListener(
         try {
             logger.debug("주문 완료 알림톡 발송 시작: orderId=${event.orderId}, userId=${event.userId}")
 
-            // TODO: 실제 알림톡 서비스 연동
-            // notificationService.sendOrderCompletedNotification(
-            //     userId = event.userId,
-            //     orderId = event.orderId,
-            //     totalAmount = event.totalAmount,
-            //     itemCount = event.items.size
-            // )
+            // 알림톡 발송
+            notificationService.sendOrderCompletedNotification(
+                userId = event.userId,
+                orderId = event.orderId,
+                totalAmount = event.totalAmount,
+                itemCount = event.items.size
+            )
 
             logger.info("[알림톡] 주문 완료 알림 발송 성공: orderId=${event.orderId}, userId=${event.userId}")
         } catch (e: Exception) {
@@ -122,21 +129,34 @@ class OrderPaidEventListener(
             val rewardPoints = (event.totalAmount * 0.01).toLong()
 
             if (rewardPoints > 0) {
-                // TODO: 실제 포인트 적립 서비스 연동
-                // userService.addPoints(
-                //     userId = event.userId,
-                //     points = rewardPoints,
-                //     reason = "주문 완료 적립 (orderId: ${event.orderId})"
-                // )
+                // 포인트 적립
+                val totalPoints = pointService.addPoints(
+                    userId = event.userId,
+                    points = rewardPoints,
+                    reason = "주문 완료 적립 (주문번호: ${event.orderId})"
+                )
 
-                logger.info("[포인트] 구매 포인트 적립 성공: orderId=${event.orderId}, userId=${event.userId}, points=${rewardPoints}")
+                logger.info(
+                    "[포인트] 구매 포인트 적립 성공: orderId=${event.orderId}, userId=${event.userId}, " +
+                    "적립: ${rewardPoints}P, 총: ${totalPoints}P"
+                )
             } else {
                 logger.debug("[포인트] 적립할 포인트 없음: orderId=${event.orderId}")
             }
         } catch (e: Exception) {
             logger.error("[포인트] 구매 포인트 적립 실패: orderId=${event.orderId}, error=${e.message}", e)
-            // 포인트 적립 실패 시 별도 보상 로직 또는 수동 처리 필요
-            // TODO: 포인트 적립 실패 알림 또는 재시도 큐 추가
+
+            // 포인트 적립 실패 시 알림 발송
+            try {
+                notificationService.sendOrderCompletedNotification(
+                    userId = event.userId,
+                    orderId = event.orderId,
+                    totalAmount = 0L, // 실패 알림용
+                    itemCount = 0
+                )
+            } catch (notificationError: Exception) {
+                logger.error("[포인트] 적립 실패 알림도 실패: orderId=${event.orderId}", notificationError)
+            }
         }
     }
 }

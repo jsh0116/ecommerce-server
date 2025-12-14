@@ -13,6 +13,11 @@ interface CouponRepository {
     fun findById(id: Long): Coupon?
 
     /**
+     * 쿠폰 코드로 조회
+     */
+    fun findByCode(code: String): Coupon?
+
+    /**
      * 특정 사용자의 쿠폰 단건 조회
      */
     fun findUserCoupon(userId: Long, couponId: Long): UserCoupon?
