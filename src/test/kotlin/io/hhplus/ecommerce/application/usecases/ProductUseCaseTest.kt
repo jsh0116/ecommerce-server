@@ -1,11 +1,10 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.InventoryService
 import io.hhplus.ecommerce.application.services.ProductService
 import io.hhplus.ecommerce.application.services.ProductRankingService
-import io.hhplus.ecommerce.domain.Inventory
 import io.hhplus.ecommerce.domain.Product
-import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
-import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
+import io.hhplus.ecommerce.infrastructure.persistence.entity.InventoryJpaEntity
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -20,10 +19,9 @@ import java.time.LocalDateTime
 class ProductUseCaseTest {
 
     private val productService = mockk<ProductService>()
-    private val inventoryRepository = mockk<InventoryRepository>()
-    private val productRepository = mockk<ProductRepository>(relaxed = true)
+    private val inventoryService = mockk<InventoryService>()
     private val productRankingService = mockk<ProductRankingService>(relaxed = true)
-    private val useCase = ProductUseCase(productService, inventoryRepository, productRepository, productRankingService)
+    private val useCase = ProductUseCase(productService, inventoryService, productRankingService)
 
     @Nested
     @DisplayName("상품 조회 테스트")
@@ -252,9 +250,9 @@ class ProductUseCaseTest {
         fun `상품의 재고 확인을 할 수 있다`() {
             // Given
             val product = Product(id = 1L, name = "상품", description = null, price = 50000L, category = "의류")
-            val inventory = Inventory(sku = "1", physicalStock = 100, reservedStock = 20)
+            val inventory = InventoryJpaEntity(sku = "1", physicalStock = 100, reservedStock = 20)
             every { productService.getByIdOrNull(1L) } returns product
-            every { inventoryRepository.findBySku("1") } returns inventory
+            every { inventoryService.getInventory("1") } returns inventory
 
             // When
             val result = useCase.checkStock(1L, 50)
@@ -269,9 +267,9 @@ class ProductUseCaseTest {
         fun `재고가 부족하면 available이 false이다`() {
             // Given
             val product = Product(id = 1L, name = "상품", description = null, price = 50000L, category = "의류")
-            val inventory = Inventory(sku = "1", physicalStock = 30, reservedStock = 20)
+            val inventory = InventoryJpaEntity(sku = "1", physicalStock = 30, reservedStock = 20)
             every { productService.getByIdOrNull(1L) } returns product
-            every { inventoryRepository.findBySku("1") } returns inventory
+            every { inventoryService.getInventory("1") } returns inventory
 
             // When
             val result = useCase.checkStock(1L, 50)

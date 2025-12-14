@@ -1,7 +1,7 @@
 package io.hhplus.ecommerce.application.services.impl
 
-import io.hhplus.ecommerce.application.usecases.OrderUseCase
 import io.hhplus.ecommerce.domain.Order
+import io.hhplus.ecommerce.dto.DataPayload
 import io.hhplus.ecommerce.application.services.DataTransmissionService
 import org.springframework.stereotype.Service
 
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service
  */
 @Service
 class MockDataTransmissionService : DataTransmissionService {
-    override fun send(payload: OrderUseCase.DataPayload) {
+    override fun send(payload: DataPayload) {
         // Mock 구현: 로그만 출력
         println("Data transmitted: Order ${payload.orderId} for user ${payload.userId}")
     }

@@ -5,6 +5,7 @@ import io.hhplus.ecommerce.application.events.OrderPaidEvent
 import io.hhplus.ecommerce.application.services.CouponService
 import io.hhplus.ecommerce.application.services.IdempotencyResult
 import io.hhplus.ecommerce.application.services.IdempotencyService
+import io.hhplus.ecommerce.application.services.InventoryService
 import io.hhplus.ecommerce.application.services.OrderService
 import io.hhplus.ecommerce.application.services.UserService
 import io.hhplus.ecommerce.application.usecases.OrderUseCase
@@ -12,7 +13,6 @@ import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.infrastructure.persistence.entity.SagaInstanceJpaEntity
 import io.hhplus.ecommerce.infrastructure.persistence.entity.SagaStatus
 import io.hhplus.ecommerce.infrastructure.persistence.repository.SagaInstanceJpaRepository
-import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
@@ -37,7 +37,7 @@ import java.util.*
 class PaymentSagaOrchestrator(
     private val orderService: OrderService,
     private val userService: UserService,
-    private val inventoryRepository: InventoryRepository,
+    private val inventoryService: InventoryService,
     private val couponService: CouponService,
     private val orderUseCase: OrderUseCase,
     private val eventPublisher: ApplicationEventPublisher,
@@ -112,10 +112,7 @@ class PaymentSagaOrchestrator(
             executeStep(sagaEntity, SagaStep.INVENTORY_CONFIRM) {
                 logger.info("[SAGA] Step 3: 재고 확정 - items=${order.items.size}개")
                 for (item in order.items) {
-                    val inventory = inventoryRepository.findBySku(item.productId.toString())
-                        ?: throw IllegalStateException("재고를 찾을 수 없습니다: ${item.productId}")
-                    inventory.confirmReservation(item.quantity)
-                    inventoryRepository.update(inventory.sku, inventory)
+                    inventoryService.confirmReservation(item.productId.toString(), item.quantity)
                 }
             }
 
@@ -239,13 +236,9 @@ class PaymentSagaOrchestrator(
                         logger.info("[SAGA] 보상: 재고 예약 확정 취소")
                         val order = orderService.getById(request.orderId)
                         for (item in order.items) {
-                            val inventory = inventoryRepository.findBySku(item.productId.toString())
-                            if (inventory != null) {
-                                // confirmReservation으로 감소한 physicalStock을 복구
-                                inventory.restoreStock(item.quantity)
-                                inventoryRepository.update(inventory.sku, inventory)
-                                logger.info("[SAGA] 재고 확정 취소 완료: sku=${item.productId}, quantity=${item.quantity}")
-                            }
+                            // confirmReservation으로 감소한 physicalStock을 복구
+                            inventoryService.restoreStock(item.productId.toString(), item.quantity)
+                            logger.info("[SAGA] 재고 확정 취소 완료: sku=${item.productId}, quantity=${item.quantity}")
                         }
                     }
                     SagaStep.USER_BALANCE_DEDUCT -> {
@@ -300,7 +293,8 @@ class PaymentSagaOrchestrator(
             items = order.items,
             totalAmount = order.totalAmount,
             discountAmount = order.discountAmount,
-            paidAt = order.paidAt ?: java.time.LocalDateTime.now()
+            paidAt = order.paidAt ?: java.time.LocalDateTime.now(),
+            order = order
         )
 
         logger.info("[SAGA] OrderPaidEvent 발행: orderId=${order.id}, userId=${order.userId}")

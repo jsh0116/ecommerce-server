@@ -18,6 +18,7 @@ class OrderPaidEvent(
     val totalAmount: Long,
     val discountAmount: Long,
     val paidAt: LocalDateTime?,
+    val order: Order,  // Repository 접근 없이 Order 정보 제공
     source: Any = Object()
 ) : ApplicationEvent(source) {
     companion object {
@@ -28,7 +29,8 @@ class OrderPaidEvent(
                 items = order.items,
                 totalAmount = order.totalAmount,
                 discountAmount = order.discountAmount,
-                paidAt = order.paidAt
+                paidAt = order.paidAt,
+                order = order
             )
         }
     }

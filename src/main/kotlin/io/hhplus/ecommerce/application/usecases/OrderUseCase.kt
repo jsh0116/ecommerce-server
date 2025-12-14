@@ -1,79 +1,39 @@
 package io.hhplus.ecommerce.application.usecases
 
-import io.hhplus.ecommerce.application.events.OrderPaidEvent
-import io.hhplus.ecommerce.application.services.ProductRankingService
 import io.hhplus.ecommerce.domain.Order
-import io.hhplus.ecommerce.domain.OrderItem
 import io.hhplus.ecommerce.application.services.OrderService
-import io.hhplus.ecommerce.application.services.ProductService
-import io.hhplus.ecommerce.application.services.UserService
-import io.hhplus.ecommerce.application.services.CouponService
-import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
+import io.hhplus.ecommerce.application.services.OrderCreationService
+import io.hhplus.ecommerce.application.services.PaymentProcessingService
 import io.hhplus.ecommerce.exception.*
-import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDateTime
-import java.util.UUID
 
 /**
  * 주문 유스케이스
  *
- * 외부 데이터 전송은 OrderPaidEvent 발행을 통해 비동기로 처리됩니다.
- * 이를 통해 DB 트랜잭션 완료 후 별도의 스레드에서 외부 시스템과의 통신이 이루어지며,
- * DB 트랜잭션 중 네트워크 대기 시간이 발생하지 않습니다.
+ * Domain Service를 활용하여 비즈니스 로직을 캡슐화합니다.
+ * UseCase는 순수한 orchestration만 담당합니다.
  */
 @Service
 class OrderUseCase(
     private val orderService: OrderService,
-    private val productService: ProductService,
-    private val userService: UserService,
-    private val couponService: CouponService,
-    private val inventoryRepository: InventoryRepository,
-    private val productUseCase: ProductUseCase,
-    private val productRankingService: ProductRankingService,
-    private val eventPublisher: ApplicationEventPublisher
+    private val orderCreationService: OrderCreationService,
+    private val paymentProcessingService: PaymentProcessingService
 ) {
     /**
      * 주문 생성
+     *
+     * OrderCreationService에 위임하여 비즈니스 로직을 캡슐화합니다.
      */
     fun createOrder(
         userId: Long,
         items: List<OrderItemRequest>,
         couponId: Long?
     ): Order {
-        // 사용자 확인
-        val user = userService.getById(userId)
-
-        // 상품 및 재고 확인 및 예약
-        val orderItems = mutableListOf<OrderItem>()
-        for (req in items) {
-            val product = productService.getById(req.productId)
-
-            // 재고 확인 (Product ID를 SKU로 사용)
-            val inventory = inventoryRepository.findBySku(product.id.toString())
-                ?: throw InventoryException.InventoryNotFound(product.id.toString())
-
-            if (!inventory.canReserve(req.quantity)) {
-                throw InventoryException.InsufficientStock(
-                    productName = product.name,
-                    available = inventory.getAvailableStock(),
-                    required = req.quantity
-                )
-            }
-
-            // 재고 예약 (reservedStock 증가)
-            inventory.reserve(req.quantity)
-            inventoryRepository.update(inventory.sku, inventory)
-
-            orderItems.add(OrderItem.create(product, req.quantity))
-        }
-
-        // 쿠폰 확인
-        val userCoupon = couponId?.let { couponService.validateUserCoupon(userId, it) }
-
-        // 주문 생성
-        return orderService.createOrder(user, orderItems, userCoupon)
+        return orderCreationService.createOrder(
+            userId = userId,
+            items = items.map { OrderCreationService.OrderItemRequest(it.productId, it.quantity) },
+            couponId = couponId
+        )
     }
 
     /**
@@ -107,97 +67,22 @@ class OrderUseCase(
 
     /**
      * 주문 취소 및 재고 예약 취소
+     *
+     * OrderCreationService에 위임하여 비즈니스 로직을 캡슐화합니다.
      */
-    @Transactional
     fun cancelOrder(orderId: Long, userId: Long): Order {
-        val order = orderService.cancelOrder(orderId, userId)
-
-        // 재고 예약 취소 (createOrder에서 reserve()로 증가한 reservedStock 감소)
-        for (item in order.items) {
-            val inventory = inventoryRepository.findBySku(item.productId.toString())
-            if (inventory != null) {
-                inventory.cancelReservation(item.quantity)
-                inventoryRepository.update(inventory.sku, inventory)
-            }
-        }
-
-        return order
+        return orderCreationService.cancelOrder(orderId, userId)
     }
 
     /**
      * 결제 처리
      *
-     * @Transactional을 통해 트랜잭션 컨텍스트 보장
-     * @TransactionalEventListener가 AFTER_COMMIT 시점에 동작하도록 함
+     * PaymentProcessingService에 위임하여 비즈니스 로직을 캡슐화합니다.
      */
-    @Transactional
-    fun processPayment(orderId: Long, userId: Long): PaymentResult {
-        // 주문 확인
-        val order = orderService.getById(orderId)
-
-        if (order.userId != userId) {
-            throw OrderException.UnauthorizedOrderAccess()
-        }
-
-        if (!order.canPay()) {
-            throw OrderException.CannotPayOrder()
-        }
-
-        // 잔액 차감
-        val user = userService.deductBalance(userId, order.finalAmount)
-
-        // 재고 차감 및 판매량 증가 (Product ID를 SKU로 사용)
-        for (item in order.items) {
-            val inventory = inventoryRepository.findBySku(item.productId.toString())
-                ?: throw InventoryException.InventoryNotFound(item.productId.toString())
-
-            // 실제 재고 차감
-            inventory.confirmReservation(item.quantity)
-            inventoryRepository.update(inventory.sku, inventory)
-
-            // 판매량 증가 (인기 상품 집계용)
-            productUseCase.recordSale(item.productId, item.quantity)
-
-            // Redis 기반 실시간 랭킹 업데이트 (STEP 13)
-            productRankingService.incrementSales(item.productId, item.quantity)
-        }
-
-        // 쿠폰 사용 처리
-        if (order.couponId != null) {
-            val userCoupon = couponService.validateUserCoupon(userId, order.couponId)
-            couponService.useCoupon(userCoupon)
-        }
-
-        // 주문 완료 처리
-        val completedOrder = orderService.completeOrder(orderId)
-
-        // 주문 결제 완료 이벤트 발행 (비동기 처리)
-        eventPublisher.publishEvent(OrderPaidEvent.from(completedOrder))
-
-        // 결제 결과 반환
-        return PaymentResult(
-            orderId = completedOrder.id,
-            paidAmount = completedOrder.finalAmount,
-            remainingBalance = user.balance,
-            status = "SUCCESS"
-        )
+    fun processPayment(orderId: Long, userId: Long): PaymentProcessingService.PaymentResult {
+        return paymentProcessingService.processPayment(orderId, userId)
     }
 
     // 내부 DTO 정의
     data class OrderItemRequest(val productId: Long, val quantity: Int)
-    data class PaymentResult(
-        val orderId: Long,
-        val paidAmount: Long,
-        val remainingBalance: Long,
-        val status: String
-    )
-
-    data class DataPayload(
-        val orderId: Long,
-        val userId: Long,
-        val items: List<OrderItem>,
-        val totalAmount: Long,
-        val discountAmount: Long,
-        val paidAt: LocalDateTime?
-    )
 }
