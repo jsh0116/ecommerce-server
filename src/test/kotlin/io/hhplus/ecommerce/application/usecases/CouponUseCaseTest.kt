@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.CouponCacheManager
 import io.hhplus.ecommerce.application.services.CouponIssuanceService
 import io.hhplus.ecommerce.application.services.CouponIssuanceQueueService
 import io.hhplus.ecommerce.application.services.CouponService
@@ -45,7 +46,7 @@ class CouponUseCaseTest {
                 startDate = LocalDateTime.now().minusDays(1),
                 endDate = LocalDateTime.now().plusDays(7)
             )
-            val status = CouponIssuanceService.CouponStatus(
+            val status = CouponCacheManager.CouponStatus(
                 couponId = 1L,
                 totalQuantity = 100,
                 issuedCount = 50,
@@ -113,7 +114,7 @@ class CouponUseCaseTest {
                 startDate = LocalDateTime.now().minusDays(1),
                 endDate = LocalDateTime.now().plusDays(7)
             )
-            val status = CouponIssuanceService.CouponStatus(
+            val status = CouponCacheManager.CouponStatus(
                 couponId = 1L, totalQuantity = 100, issuedCount = 50, remainingQuantity = 50
             )
 

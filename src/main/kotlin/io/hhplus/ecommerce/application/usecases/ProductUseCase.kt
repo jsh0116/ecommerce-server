@@ -1,10 +1,9 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.InventoryService
 import io.hhplus.ecommerce.application.services.ProductService
 import io.hhplus.ecommerce.application.services.ProductRankingService
 import io.hhplus.ecommerce.domain.Product
-import io.hhplus.ecommerce.infrastructure.repositories.InventoryRepository
-import io.hhplus.ecommerce.infrastructure.repositories.ProductRepository
 import org.slf4j.LoggerFactory
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
@@ -15,8 +14,7 @@ import org.springframework.stereotype.Service
 @Service
 class ProductUseCase(
     private val productService: ProductService,
-    private val inventoryRepository: InventoryRepository,
-    private val productRepository: ProductRepository,
+    private val inventoryService: InventoryService,
     private val productRankingService: ProductRankingService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -138,9 +136,9 @@ class ProductUseCase(
             return TopProductResponse(products = emptyList())
         }
 
-        // 2. ProductRepository에서 상품 정보 일괄 조회
+        // 2. ProductService에서 상품 정보 일괄 조회
         val productIds = rankingIds.map { it.productId }
-        val products = productRepository.findAllById(productIds).associateBy { it.id }
+        val products = productService.findAllById(productIds).associateBy { it.id }
 
         // 3. 랭킹 순서대로 응답 생성
         val topProducts = rankingIds.mapNotNull { rankingId ->
@@ -176,9 +174,9 @@ class ProductUseCase(
             return TopProductResponse(products = emptyList())
         }
 
-        // 2. ProductRepository에서 상품 정보 일괄 조회
+        // 2. ProductService에서 상품 정보 일괄 조회
         val productIds = rankingIds.map { it.productId }
-        val products = productRepository.findAllById(productIds).associateBy { it.id }
+        val products = productService.findAllById(productIds).associateBy { it.id }
 
         // 3. 랭킹 순서대로 응답 생성
         val topProducts = rankingIds.mapNotNull { rankingId ->
@@ -204,7 +202,7 @@ class ProductUseCase(
             ?: throw IllegalStateException("상품을 찾을 수 없습니다")
 
         // 재고 조회 (Product ID를 SKU로 사용)
-        val inventory = inventoryRepository.findBySku(productId.toString())
+        val inventory = inventoryService.getInventory(productId.toString())
             ?: throw IllegalStateException("재고 정보를 찾을 수 없습니다")
 
         // 재고 정보 반환

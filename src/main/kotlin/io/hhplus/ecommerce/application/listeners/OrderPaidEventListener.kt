@@ -2,11 +2,8 @@ package io.hhplus.ecommerce.application.listeners
 
 import io.hhplus.ecommerce.application.events.OrderPaidEvent
 import io.hhplus.ecommerce.application.services.DataTransmissionService
-import io.hhplus.ecommerce.application.usecases.OrderUseCase
-import io.hhplus.ecommerce.infrastructure.persistence.entity.DataTransmissionLogJpaEntity
-import io.hhplus.ecommerce.infrastructure.persistence.entity.TransmissionStatus
-import io.hhplus.ecommerce.infrastructure.persistence.repository.DataTransmissionLogJpaRepository
-import io.hhplus.ecommerce.infrastructure.repositories.OrderRepository
+import io.hhplus.ecommerce.application.services.TransmissionLogService
+import io.hhplus.ecommerce.dto.DataPayload
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
@@ -25,13 +22,12 @@ import org.springframework.transaction.event.TransactionalEventListener
 @Component
 class OrderPaidEventListener(
     private val dataTransmissionService: DataTransmissionService?,
-    private val orderRepository: OrderRepository,
-    private val transmissionLogRepository: DataTransmissionLogJpaRepository
+    private val transmissionLogService: TransmissionLogService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 리스너 1: 주문 결제 완료 시 외부 데이터 전송
+     * 주문 결제 완료 시 외부 데이터 전송하는 리스너
      *
      * 트랜잭션 커밋 이후(AFTER_COMMIT)에 실행되어
      * 외부 API 실패가 주문 트랜잭션을 롤백시키지 않습니다.
@@ -42,19 +38,14 @@ class OrderPaidEventListener(
     @Async
     fun handleDataTransmission(event: OrderPaidEvent) {
         // 1. 전송 로그 생성 (PENDING 상태)
-        val log = DataTransmissionLogJpaEntity(
-            orderId = event.orderId,
-            userId = event.userId,
-            status = TransmissionStatus.PENDING
-        )
-        transmissionLogRepository.save(log)
+        val log = transmissionLogService.createPendingLog(event.orderId, event.userId)
 
         try {
             logger.debug("주문 결제 완료 이벤트 처리 시작: orderId=${event.orderId}")
 
             // 2. 외부 데이터 전송
             dataTransmissionService?.send(
-                OrderUseCase.DataPayload(
+                DataPayload(
                     orderId = event.orderId,
                     userId = event.userId,
                     items = event.items,
@@ -65,28 +56,19 @@ class OrderPaidEventListener(
             )
 
             // 3. 성공 시 로그 업데이트
-            log.markAsSuccess()
-            transmissionLogRepository.save(log)
-
+            transmissionLogService.markAsSuccess(log)
             logger.info("주문 결제 완료 외부 전송 성공: orderId=${event.orderId}")
         } catch (e: Exception) {
             logger.error("주문 결제 완료 외부 전송 실패, 재시도 큐 저장: orderId=${event.orderId}, error=${e.message}")
 
             // 4. 실패 시 로그 업데이트
-            log.markAsFailed(e.message ?: "알 수 없는 오류")
-            transmissionLogRepository.save(log)
+            transmissionLogService.markAsFailed(log, e.message ?: "알 수 없는 오류")
 
             // 5. 재시도 큐에 저장
             try {
-                val order = orderRepository.findById(event.orderId)
-                if (order != null) {
-                    dataTransmissionService?.addToRetryQueue(order)
-                    log.markAsRetrying()
-                    transmissionLogRepository.save(log)
-                    logger.info("재시도 큐에 저장되었습니다: orderId=${event.orderId}")
-                } else {
-                    logger.error("주문을 찾을 수 없어 재시도 큐 저장 실패: orderId=${event.orderId}")
-                }
+                dataTransmissionService?.addToRetryQueue(event.order)
+                transmissionLogService.markAsRetrying(log)
+                logger.info("재시도 큐에 저장되었습니다: orderId=${event.orderId}")
             } catch (retryError: Exception) {
                 logger.error("재시도 큐 저장도 실패했습니다: orderId=${event.orderId}, error=${retryError.message}")
             }
