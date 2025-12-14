@@ -2,6 +2,8 @@ package io.hhplus.ecommerce.application.listeners
 
 import io.hhplus.ecommerce.application.events.OrderPaidEvent
 import io.hhplus.ecommerce.application.services.DataTransmissionService
+import io.hhplus.ecommerce.application.services.NotificationService
+import io.hhplus.ecommerce.application.services.PointService
 import io.hhplus.ecommerce.application.services.TransmissionLogService
 import io.hhplus.ecommerce.domain.Order
 import io.hhplus.ecommerce.domain.OrderItem
@@ -19,15 +21,21 @@ class OrderPaidEventListenerTest {
 
     private lateinit var dataTransmissionService: DataTransmissionService
     private lateinit var transmissionLogService: TransmissionLogService
+    private lateinit var notificationService: NotificationService
+    private lateinit var pointService: PointService
     private lateinit var listener: OrderPaidEventListener
 
     @BeforeEach
     fun setUp() {
         dataTransmissionService = mockk(relaxed = true)
         transmissionLogService = mockk(relaxed = true)
+        notificationService = mockk(relaxed = true)
+        pointService = mockk(relaxed = true)
         listener = OrderPaidEventListener(
             dataTransmissionService,
-            transmissionLogService
+            transmissionLogService,
+            notificationService,
+            pointService
         )
     }
 
@@ -87,13 +95,20 @@ class OrderPaidEventListenerTest {
     fun notification_shouldBeSent() {
         // Given
         val event = createTestEvent()
+        every { notificationService.sendOrderCompletedNotification(any(), any(), any(), any()) } just Runs
 
         // When
         listener.handleOrderNotification(event)
 
         // Then
-        // 로그 출력 확인 (실제 알림 서비스는 TODO이므로 검증 제외)
-        // 실제 구현 시: verify { notificationService.sendOrderCompletedNotification(...) }
+        verify(exactly = 1) {
+            notificationService.sendOrderCompletedNotification(
+                userId = event.userId,
+                orderId = event.orderId,
+                totalAmount = event.totalAmount,
+                itemCount = event.items.size
+            )
+        }
     }
 
     @Test
@@ -102,12 +117,19 @@ class OrderPaidEventListenerTest {
         // Given
         val event = createTestEvent(totalAmount = 10000L)
         val expectedPoints = 100L // 10000 * 0.01
+        every { pointService.addPoints(any(), any(), any()) } returns 100L
 
         // When
         listener.handlePointReward(event)
 
         // Then
-        // 실제 구현 시: verify { userService.addPoints(event.userId, expectedPoints, any()) }
+        verify(exactly = 1) {
+            pointService.addPoints(
+                userId = event.userId,
+                points = expectedPoints,
+                reason = "주문 완료 적립 (주문번호: ${event.orderId})"
+            )
+        }
     }
 
     private fun createTestEvent(

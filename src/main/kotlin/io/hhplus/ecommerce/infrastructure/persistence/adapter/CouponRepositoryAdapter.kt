@@ -25,6 +25,10 @@ class CouponRepositoryAdapter(
         return couponJpaRepository.findById(id).map { it.toDomain() }.orElse(null)
     }
 
+    override fun findByCode(code: String): Coupon? {
+        return couponJpaRepository.findByCode(code)?.toDomain()
+    }
+
     override fun save(coupon: Coupon) {
         val entity = coupon.toEntity()
         couponJpaRepository.save(entity)

@@ -19,7 +19,8 @@ class CouponIssuanceProcessor(
     private val couponIssuanceQueueService: CouponIssuanceQueueService,
     private val couponIssuanceService: CouponIssuanceService,
     private val couponService: CouponService,
-    private val userService: UserService
+    private val userService: UserService,
+    private val couponEventPublisher: CouponEventPublisher
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -114,11 +115,19 @@ class CouponIssuanceProcessor(
         couponService.saveUserCoupon(userCoupon)
 
         // 6. Redis에 발급 기록 (원자적 중복 체크)
-        couponIssuanceService.recordIssuance(couponId, userId)
+        val remainingQuantity = couponIssuanceService.recordIssuance(couponId, userId)
+
+        // 7. 쿠폰 발급 이벤트 발행
+        couponEventPublisher.publishCouponIssuedEvent(userCoupon, remainingQuantity)
+
+        // 8. 쿠폰 소진 확인 및 이벤트 발행
+        if (coupon.issuedQuantity >= coupon.totalQuantity) {
+            couponEventPublisher.publishCouponExhaustedEvent(coupon)
+        }
 
         logger.info(
-            "쿠폰 발급 처리 완료: requestId={}, couponId={}, userId={}",
-            request.requestId, couponId, userId
+            "쿠폰 발급 처리 완료: requestId={}, couponId={}, userId={}, remaining={}",
+            request.requestId, couponId, userId, remainingQuantity
         )
     }
 }

@@ -22,12 +22,14 @@ class CouponIssuanceProcessorTest {
     private val couponIssuanceService = mockk<CouponIssuanceService>(relaxed = true)
     private val couponService = mockk<CouponService>(relaxed = true)
     private val userService = mockk<UserService>(relaxed = true)
+    private val couponEventPublisher = mockk<CouponEventPublisher>(relaxed = true)
 
     private val processor = CouponIssuanceProcessor(
         couponIssuanceQueueService,
         couponIssuanceService,
         couponService,
-        userService
+        userService,
+        couponEventPublisher
     )
 
     @Nested

@@ -194,14 +194,108 @@ class CouponUseCaseTest {
     @Nested
     @DisplayName("쿠폰 검증 테스트")
     inner class ValidateCouponTest {
+
         @Test
-        fun `쿠폰 검증을 수행할 수 있다`() {
+        fun `유효한 쿠폰 코드와 최소 주문 금액 이상인 경우 검증이 성공한다`() {
+            // Given
+            val coupon = Coupon(
+                id = 1L, code = "COUPON-001", name = "10% 할인 쿠폰",
+                type = CouponType.PERCENTAGE, discount = 0L, discountRate = 10,
+                minOrderAmount = 30000L,
+                totalQuantity = 100, issuedQuantity = 50,
+                startDate = LocalDateTime.now().minusDays(1),
+                endDate = LocalDateTime.now().plusDays(7)
+            )
+            every { couponService.findByCode("COUPON-001") } returns coupon
+
             // When
             val result = useCase.validateCoupon("COUPON-001", 50000L)
 
             // Then
-            assertThat(result).isNotNull
+            assertThat(result.valid).isTrue
+            assertThat(result.coupon).isEqualTo(coupon)
+            assertThat(result.discount).isEqualTo(5000L) // 50000 * 10% = 5000
+            assertThat(result.message).contains("성공")
+        }
+
+        @Test
+        fun `쿠폰 코드가 존재하지 않으면 검증이 실패한다`() {
+            // Given
+            every { couponService.findByCode("INVALID-CODE") } returns null
+
+            // When
+            val result = useCase.validateCoupon("INVALID-CODE", 50000L)
+
+            // Then
             assertThat(result.valid).isFalse
+            assertThat(result.coupon).isNull()
+            assertThat(result.discount).isEqualTo(0L)
+            assertThat(result.message).contains("쿠폰을 찾을 수 없습니다")
+        }
+
+        @Test
+        fun `최소 주문 금액보다 적으면 검증이 실패한다`() {
+            // Given
+            val coupon = Coupon(
+                id = 1L, code = "COUPON-001", name = "10% 할인 쿠폰",
+                type = CouponType.PERCENTAGE, discount = 0L, discountRate = 10,
+                minOrderAmount = 30000L,
+                totalQuantity = 100, issuedQuantity = 50,
+                startDate = LocalDateTime.now().minusDays(1),
+                endDate = LocalDateTime.now().plusDays(7)
+            )
+            every { couponService.findByCode("COUPON-001") } returns coupon
+
+            // When
+            val result = useCase.validateCoupon("COUPON-001", 20000L)
+
+            // Then
+            assertThat(result.valid).isFalse
+            assertThat(result.coupon).isEqualTo(coupon)
+            assertThat(result.discount).isEqualTo(0L)
+            assertThat(result.message).contains("최소 주문 금액")
+        }
+
+        @Test
+        fun `쿠폰 사용 기간이 아니면 검증이 실패한다`() {
+            // Given
+            val coupon = Coupon(
+                id = 1L, code = "COUPON-001", name = "10% 할인 쿠폰",
+                type = CouponType.PERCENTAGE, discount = 0L, discountRate = 10,
+                minOrderAmount = 30000L,
+                totalQuantity = 100, issuedQuantity = 50,
+                startDate = LocalDateTime.now().plusDays(1), // 아직 시작 전
+                endDate = LocalDateTime.now().plusDays(7)
+            )
+            every { couponService.findByCode("COUPON-001") } returns coupon
+
+            // When
+            val result = useCase.validateCoupon("COUPON-001", 50000L)
+
+            // Then
+            assertThat(result.valid).isFalse
+            assertThat(result.message).contains("사용 기간")
+        }
+
+        @Test
+        fun `고정 금액 할인 쿠폰이 정상 작동한다`() {
+            // Given
+            val coupon = Coupon(
+                id = 1L, code = "FIXED-5000", name = "5000원 할인 쿠폰",
+                type = CouponType.FIXED_AMOUNT, discount = 5000L, discountRate = 0,
+                minOrderAmount = 30000L,
+                totalQuantity = 100, issuedQuantity = 50,
+                startDate = LocalDateTime.now().minusDays(1),
+                endDate = LocalDateTime.now().plusDays(7)
+            )
+            every { couponService.findByCode("FIXED-5000") } returns coupon
+
+            // When
+            val result = useCase.validateCoupon("FIXED-5000", 50000L)
+
+            // Then
+            assertThat(result.valid).isTrue
+            assertThat(result.discount).isEqualTo(5000L)
         }
     }
 }

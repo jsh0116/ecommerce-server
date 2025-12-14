@@ -19,13 +19,6 @@ data class Order(
     var paidAt: LocalDateTime? = null
 ) {
     /**
-     * 금액 계산
-     */
-    fun calculateAmount(coupon: UserCoupon?) {
-        // TODO: 금액 계산 로직 (별도의 setter가 필요할 경우)
-    }
-
-    /**
      * 결제 가능 여부
      */
     fun canPay(): Boolean = "PENDING" == status && finalAmount > 0
