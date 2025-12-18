@@ -8,7 +8,30 @@
 
 ## 🚀 시작하기
 
-### 1. 서버 실행
+### 1. Docker Compose로 인프라 실행 (MySQL, Redis, Kafka)
+
+```bash
+# 전체 인프라 실행
+docker-compose up -d
+
+# 특정 서비스만 실행
+docker-compose up -d mysql redis kafka
+
+# 상태 확인
+docker-compose ps
+
+# 로그 확인
+docker-compose logs -f kafka
+```
+
+**주요 서비스 포트:**
+- MySQL: `localhost:3306`
+- Redis: `localhost:6379`
+- Kafka: `localhost:9092`
+- Zookeeper: `localhost:2181`
+- Kafka UI: `http://localhost:8090` (웹 브라우저로 Kafka 모니터링)
+
+### 2. 서버 실행
 
 ```bash
 ./gradlew bootRun
@@ -21,12 +44,28 @@
 java -jar build/libs/hhplus-ecommerce-0.0.1-SNAPSHOT.jar
 ```
 
-### 2. Swagger UI 접근
+### 3. Swagger UI 접근
 
 서버 실행 후 아래 주소로 접근:
 
 ```
 http://localhost:8080/swagger-ui.html
+```
+
+### 4. Kafka Topic 확인 (선택사항)
+
+```bash
+# Kafka 컨테이너 접속
+docker exec -it ecommerce_kafka bash
+
+# Topic 목록 조회
+kafka-topics --bootstrap-server localhost:9092 --list
+
+# Topic 상세 정보 조회
+kafka-topics --bootstrap-server localhost:9092 --describe --topic order-events
+
+# Consumer로 메시지 확인
+kafka-console-consumer --bootstrap-server localhost:9092 --topic order-events --from-beginning
 ```
 
 ---
