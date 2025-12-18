@@ -19,9 +19,38 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+  # Kafka Configuration for Test
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: ecommerce-service-test
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: "*"
+
 # Swagger/OpenAPI Configuration
 springdoc:
   swagger-ui:
     enabled: false
   api-docs:
     enabled: false
+
+# Logging Configuration - 테스트 시 불필요한 로그 최소화
+logging:
+  level:
+    root: WARN                              # 기본 로그 레벨: WARN (ERROR, WARN만 출력)
+    io.hhplus.ecommerce: INFO               # 애플리케이션 로그: INFO (테스트 관련 주요 정보)
+    org.springframework: WARN               # Spring Framework: WARN
+    org.springframework.boot: WARN          # Spring Boot: WARN
+    org.springframework.test: WARN          # Spring Test: WARN
+    org.hibernate: WARN                     # Hibernate: WARN
+    org.hibernate.SQL: WARN                 # Hibernate SQL: WARN (show-sql: false와 함께 사용)
+    org.testcontainers: INFO                # TestContainers: INFO (컨테이너 시작/종료 정보)
+    com.zaxxer.hikari: WARN                 # HikariCP: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"  # 간결한 로그 포맷
