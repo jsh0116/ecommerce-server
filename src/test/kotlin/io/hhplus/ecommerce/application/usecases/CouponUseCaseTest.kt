@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.AsyncCouponIssuanceService
 import io.hhplus.ecommerce.application.services.CouponCacheManager
 import io.hhplus.ecommerce.application.services.CouponIssuanceService
 import io.hhplus.ecommerce.application.services.CouponIssuanceQueueService
@@ -30,7 +31,14 @@ class CouponUseCaseTest {
     private val userService = mockk<UserService>()
     private val couponIssuanceService = mockk<CouponIssuanceService>(relaxed = true)
     private val couponIssuanceQueueService = mockk<CouponIssuanceQueueService>(relaxed = true)
-    private val useCase = CouponUseCase(couponService, userService, couponIssuanceService, couponIssuanceQueueService)
+    private val asyncCouponIssuanceService = mockk<AsyncCouponIssuanceService>(relaxed = true)
+    private val useCase = CouponUseCase(
+        couponService,
+        userService,
+        couponIssuanceService,
+        couponIssuanceQueueService,
+        asyncCouponIssuanceService
+    )
 
     @Nested
     @DisplayName("쿠폰 발급 요청 테스트 (비동기)")

@@ -1,5 +1,6 @@
 package io.hhplus.ecommerce.application.usecases
 
+import io.hhplus.ecommerce.application.services.AsyncCouponIssuanceService
 import io.hhplus.ecommerce.application.services.CouponIssuanceService
 import io.hhplus.ecommerce.application.services.CouponIssuanceQueueService
 import io.hhplus.ecommerce.application.services.CouponService
@@ -17,7 +18,8 @@ class CouponUseCase(
     private val couponService: CouponService,
     private val userService: UserService,
     private val couponIssuanceService: CouponIssuanceService,
-    private val couponIssuanceQueueService: CouponIssuanceQueueService
+    private val couponIssuanceQueueService: CouponIssuanceQueueService,
+    private val asyncCouponIssuanceService: AsyncCouponIssuanceService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -150,6 +152,31 @@ class CouponUseCase(
             discount = discount,
             message = "쿠폰 검증 성공"
         )
+    }
+
+    /**
+     * 쿠폰 발급 요청 (비동기 방식)
+     *
+     * 비동기 메시징 시스템을 통해 쿠폰 발급 요청을 처리합니다.
+     * 실제 구현체(Kafka, Queue 등)는 AsyncCouponIssuanceService 인터페이스를 통해 주입됩니다.
+     *
+     * @param couponId 쿠폰 ID
+     * @param userId 사용자 ID
+     * @return 발급 요청 ID (멱등성 키)
+     */
+    fun requestCouponIssuanceAsync(couponId: Long, userId: Long): String {
+        // 1. 쿠폰 존재 여부 확인 (빠른 실패)
+        val coupon = couponService.getById(couponId)
+
+        // 2. 비동기 발급 요청 (구현체에 위임)
+        val requestId = asyncCouponIssuanceService.requestIssuance(couponId, userId)
+
+        logger.info(
+            "쿠폰 발급 비동기 요청 완료: requestId={}, couponId={}, userId={}",
+            requestId, couponId, userId
+        )
+
+        return requestId
     }
 
     /**
