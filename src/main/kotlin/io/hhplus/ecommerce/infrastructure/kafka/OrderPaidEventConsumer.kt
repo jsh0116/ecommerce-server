@@ -1,6 +1,7 @@
 package io.hhplus.ecommerce.infrastructure.kafka
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.hhplus.ecommerce.application.services.DataPlatformService
 import org.slf4j.LoggerFactory
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.support.Acknowledgment
@@ -29,7 +30,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 @Component
 class OrderPaidEventConsumer(
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val dataPlatformService: DataPlatformService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -92,10 +94,10 @@ class OrderPaidEventConsumer(
      * 3. 분석 시스템으로 결제 데이터 전송
      */
     private fun handleOrderPaidEvent(event: Map<String, Any>) {
-        val orderId = event["orderId"]
-        val userId = event["userId"]
-        val finalAmount = event["finalAmount"]
-        val paidAt = event["paidAt"]
+        val orderId = (event["orderId"] as? Number)?.toLong() ?: 0L
+        val userId = (event["userId"] as? Number)?.toLong() ?: 0L
+        val finalAmount = (event["finalAmount"] as? Number)?.toLong() ?: 0L
+        val paidAt = event["paidAt"]?.toString() ?: ""
 
         logger.info(
             """
@@ -107,11 +109,21 @@ class OrderPaidEventConsumer(
             """.trimIndent()
         )
 
-        // TODO: 실제 비즈니스 로직 구현
-        // 예시:
-        // - dataWarehouseService.sendOrderData(orderId, userId, finalAmount)
-        // - erpSystemClient.notifyOrderPaid(orderId)
-        // - analyticsService.trackPayment(userId, finalAmount)
+        try {
+            // 1. 데이터 웨어하우스로 주문 데이터 전송
+            dataPlatformService.sendOrderDataToWarehouse(orderId, userId, finalAmount, paidAt)
+
+            // 2. ERP 시스템에 주문 완료 알림
+            dataPlatformService.notifyErpSystem(orderId)
+
+            // 3. 분석 시스템으로 결제 데이터 전송
+            dataPlatformService.sendPaymentAnalytics(orderId, userId, finalAmount)
+
+            logger.info("[Kafka Consumer] 데이터 플랫폼 전송 완료: orderId=$orderId")
+        } catch (e: Exception) {
+            // 데이터 플랫폼 전송 실패가 이벤트 처리 전체를 막지 않음
+            logger.error("[Kafka Consumer] 데이터 플랫폼 전송 중 오류 발생: orderId=$orderId", e)
+        }
     }
 
     /**
