@@ -48,6 +48,8 @@ spring:
         spring.json.trusted.packages: "*"  # 모든 패키지 역직렬화 허용
     listener:
       ack-mode: manual  # 수동 ACK 모드
+      # Kafka가 없는 환경에서 Consumer 자동 시작 비활성화 (개발 중 WARN 로그 방지)
+      # auto-startup: false
 
 # Swagger/OpenAPI Configuration
 springdoc:
