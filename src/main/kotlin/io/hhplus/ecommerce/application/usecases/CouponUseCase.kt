@@ -152,6 +152,45 @@ class CouponUseCase(
         )
     }
 
+    /**
+     * 쿠폰 발급 (동기 방식 - Kafka Consumer용)
+     *
+     * Redis 발급 기록 + DB 저장을 동기적으로 수행합니다.
+     * Kafka Consumer에서 메시지를 처리할 때 호출됩니다.
+     *
+     * @param couponId 쿠폰 ID
+     * @param userId 사용자 ID
+     * @return 발급된 사용자 쿠폰
+     * @throws CouponException.CouponExhausted 쿠폰 소진 시
+     * @throws CouponException.AlreadyIssuedCoupon 이미 발급받은 경우
+     */
+    fun issueCouponDirectly(couponId: Long, userId: Long): UserCoupon {
+        // 1. 쿠폰 정보 조회
+        val coupon = couponService.getById(couponId)
+
+        // 2. Redis에 발급 기록 (INCR - 원자적 증가)
+        couponIssuanceService.recordIssuance(couponId, userId)
+
+        // 3. DB에 UserCoupon 저장
+        val userCoupon = UserCoupon(
+            userId = userId,
+            couponId = couponId,
+            couponName = coupon.name,
+            discountRate = coupon.discountRate,
+            status = "AVAILABLE",
+            issuedAt = LocalDateTime.now(),
+            expiresAt = LocalDateTime.now().plusDays(7)
+        )
+        couponService.saveUserCoupon(userCoupon)
+
+        logger.info(
+            "쿠폰 발급 완료 (동기): couponId={}, userId={}",
+            couponId, userId
+        )
+
+        return userCoupon
+    }
+
     data class CouponIssueResult(
         val userCouponId: Long,
         val couponName: String,
