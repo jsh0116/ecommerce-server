@@ -8,7 +8,31 @@
 
 ## 🚀 시작하기
 
-### 1. 서버 실행
+### 1. Docker Compose로 인프라 실행 (MySQL, Redis, Kafka)
+
+```bash
+# 전체 인프라 실행
+docker-compose up -d
+
+# 특정 서비스만 실행
+docker-compose up -d mysql redis kafka
+
+# 상태 확인
+docker-compose ps
+
+# 로그 확인
+docker-compose logs -f kafka
+```
+
+**주요 서비스 포트:**
+- MySQL: `localhost:3306`
+- Redis: `localhost:6379`
+- Kafka: `localhost:9092`
+- Zookeeper: `localhost:2181`
+- Kafka UI: `http://localhost:8090` (웹 브라우저로 Kafka 모니터링)
+- Kafka Connect: `http://localhost:8083` (Debezium REST API)
+
+### 2. 서버 실행
 
 ```bash
 ./gradlew bootRun
@@ -21,12 +45,85 @@
 java -jar build/libs/hhplus-ecommerce-0.0.1-SNAPSHOT.jar
 ```
 
-### 2. Swagger UI 접근
+### 3. Swagger UI 접근
 
 서버 실행 후 아래 주소로 접근:
 
 ```
 http://localhost:8080/swagger-ui.html
+```
+
+### 4. Kafka Topic 확인 (선택사항)
+
+```bash
+# Kafka 컨테이너 접속
+docker exec -it ecommerce_kafka bash
+
+# Topic 목록 조회
+kafka-topics --bootstrap-server localhost:9092 --list
+
+# Topic 상세 정보 조회
+kafka-topics --bootstrap-server localhost:9092 --describe --topic order-events
+
+# Consumer로 메시지 확인
+kafka-console-consumer --bootstrap-server localhost:9092 --topic order-events --from-beginning
+```
+
+### 5. Debezium Outbox Connector 설정 (CDC)
+
+**Transactional Outbox Pattern을 위한 Debezium 설정**
+
+#### 5-1. Kafka Connect 상태 확인
+
+```bash
+# Kafka Connect 실행 확인
+curl http://localhost:8083/
+
+# 설치된 Connector 플러그인 확인
+curl http://localhost:8083/connector-plugins | jq
+```
+
+#### 5-2. Debezium MySQL Outbox Connector 등록
+
+```bash
+# Connector 등록
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d @debezium-outbox-connector.json
+
+# 등록된 Connector 목록 확인
+curl http://localhost:8083/connectors
+
+# Connector 상태 확인
+curl http://localhost:8083/connectors/outbox-connector/status | jq
+```
+
+#### 5-3. Outbox Event 발행 확인
+
+```bash
+# Outbox 이벤트 Topic 확인 (aggregateType별로 생성됨)
+# 예: outbox.event.ORDER, outbox.event.COUPON
+kafka-console-consumer --bootstrap-server localhost:9092 \
+  --topic outbox.event.ORDER \
+  --from-beginning \
+  --property print.key=true \
+  --property key.separator=" | "
+```
+
+**출력 예시:**
+```
+user-123 | {"orderId":"order-456","amount":10000,"status":"PAID"}
+user-123 | {"orderId":"order-457","amount":20000,"status":"PAID"}
+```
+
+#### 5-4. Connector 삭제 (필요시)
+
+```bash
+# Connector 삭제
+curl -X DELETE http://localhost:8083/connectors/outbox-connector
+
+# Connector 재시작
+curl -X POST http://localhost:8083/connectors/outbox-connector/restart
 ```
 
 ---

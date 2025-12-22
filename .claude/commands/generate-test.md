@@ -17,5 +17,3 @@
 - 명확한 HTTP 상태 검증 (`status().isCreated`, `status().isBadRequest` 등)
 - JSON 직렬화는 `jacksonObjectMapper()` 사용
 - DB 테스트는 Testcontainers 권장
-
-출력: Kotlin 테스트 클래스 코드 블록 1개

@@ -27,6 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 ./gradlew test                     # Run unit tests only (excludes integration tests)
 ./gradlew testIntegration          # Run integration tests with @Tag("integration")
+./gradlew testIntegrationNoRedis   # Run integration tests without Redis (local development)
 ./gradlew test testIntegration     # Run all tests (both unit and integration)
 ./gradlew test --tests "*ClassName*"  # Run specific test class
 ./gradlew test --tests "*ClassName*.*methodName*"  # Run specific test method
@@ -35,6 +36,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Test Types:**
 - **Unit Tests**: Fast, in-memory, no external dependencies (excluded by default from `./gradlew test`)
 - **Integration Tests**: Run with Docker/TestContainers for MySQL and Redis, tagged with `@Tag("integration")`
+- **Integration Tests (No Redis)**: Integration tests that exclude Redis-dependent tests, tagged with `@Tag("redis-required")` (exclusion)
 - **Performance Tests**: Special tests tagged with `@Tag("performance")` for query optimization analysis
 
 ### Code Quality
@@ -520,3 +522,177 @@ class OrderIntegrationTest : IntegrationTestBase {
 - **Batch Operations:** Leverage HikariCP batch size settings for bulk inserts
 - **Indexing:** Ensure foreign keys and frequently queried columns have indexes
 - **Query Analysis:** Run `EXPLAIN ANALYZE` tests to verify query plans before production
+
+## SAGA Pattern Implementation
+
+The project implements the SAGA pattern for distributed transaction management in payment processing.
+
+### Payment SAGA Orchestrator
+- **Location:** `application/saga/PaymentSagaOrchestrator.kt`
+- **Purpose:** Coordinates multi-step payment workflow with compensation logic
+- **Pattern:** Orchestration-based SAGA (centralized coordinator)
+
+### SAGA Workflow Steps
+1. **Deduct Balance:** Reduce user balance for order amount
+2. **Confirm Inventory:** Convert reserved stock to confirmed stock
+3. **Use Coupon:** Mark coupon as used (if applicable)
+4. **Data Transmission:** Send order data to external systems
+
+### Compensation Transactions
+If any step fails, the SAGA executes compensation in reverse order:
+- **Restore Balance:** Refund deducted amount
+- **Release Inventory:** Cancel confirmed stock reservation
+- **Restore Coupon:** Mark coupon as available again
+- **Mark Transmission Failed:** Update data transmission status
+
+### SAGA State Management
+- **SagaInstance Entity:** Stores SAGA execution state in database
+- **Recovery Service:** `SagaRecoveryService.kt` automatically retries failed SAGAs
+- **Idempotency:** Each SAGA step is idempotent using unique request IDs
+- **Monitoring:** Track SAGA progress via `completedSteps` field
+
+### Key Components
+```kotlin
+// SAGA execution
+@Service
+class PaymentSagaOrchestrator {
+    fun execute(request: PaymentSagaRequest): SagaResponse {
+        // Execute steps sequentially
+        // On failure, run compensations in reverse
+    }
+}
+
+// Auto-recovery
+@Service
+class SagaRecoveryService {
+    @Scheduled(fixedDelay = 300000)  // 5 minutes
+    fun recoverFailedSagas() {
+        // Retry failed SAGAs automatically
+    }
+}
+```
+
+**Important Notes:**
+- SAGA state is persisted to database for recovery after crashes
+- Duplicate requests are prevented via `DuplicateRequestException`
+- Failed SAGAs are automatically retried up to max retry count
+- Stuck SAGAs trigger operational alerts for manual intervention
+
+## Event-Driven Architecture
+
+The project uses Spring Events for asynchronous, decoupled communication between components.
+
+### Domain Events
+- **Location:** `application/events/`
+- **Pattern:** Domain Event pattern for reactive workflows
+
+### Event Types
+1. **OrderCreatedEvent:** Published when order is created
+2. **OrderPaidEvent:** Published after successful payment
+3. **OrderCancelledEvent:** Published when order is cancelled
+4. **CouponIssuedEvent:** Published when coupon is issued to user
+5. **CouponExhaustedEvent:** Published when coupon quantity reaches zero
+
+### Event Listeners
+- **Location:** `application/listeners/`
+- **Example:** `OrderPaidEventListener` - Handles post-payment actions like data transmission
+
+### Publishing Events
+```kotlin
+// In service layer
+applicationEventPublisher.publishEvent(
+    OrderPaidEvent(orderId, userId, totalAmount)
+)
+```
+
+### Consuming Events
+```kotlin
+@Component
+class OrderPaidEventListener {
+    @EventListener
+    @Async  // Optional: process asynchronously
+    fun handleOrderPaid(event: OrderPaidEvent) {
+        // Execute side effects
+        dataTransmissionService.send(event)
+    }
+}
+```
+
+**Benefits:**
+- Decouples services (publisher doesn't know about subscribers)
+- Supports multiple listeners for same event
+- Enables audit logging and analytics
+- Facilitates future migration to message queues (Kafka, RabbitMQ)
+
+## Load Testing with K6
+
+The project includes K6 load testing scripts for performance validation.
+
+### K6 Installation
+```bash
+# macOS
+brew install k6
+
+# Windows
+choco install k6
+
+# Docker
+docker pull grafana/k6:latest
+```
+
+### Running Load Tests
+```bash
+# Navigate to k6 directory
+cd k6
+
+# Run before-cache test (baseline performance)
+k6 run load-test-before-cache.js
+
+# Run after-cache test (with Redis caching)
+k6 run load-test-after-cache.js
+
+# Run with Docker
+docker run --rm -i --network=host grafana/k6 run - <load-test-after-cache.js
+```
+
+### Test Scenarios
+The load tests simulate realistic e-commerce traffic patterns:
+
+1. **Product Browsing** (50 VUs, 2 minutes)
+   - Product list and detail queries
+   - Tests read performance and caching
+
+2. **Coupon Issuance** (100 VUs, 1 minute)
+   - Concurrent coupon requests
+   - Tests Redis distributed locking
+
+3. **Order Processing** (30 VUs, 2 minutes)
+   - End-to-end order creation and payment
+   - Tests transaction handling and SAGA execution
+
+### Performance Thresholds
+```javascript
+thresholds: {
+    http_req_duration: ['p(95)<500', 'p(99)<1000'], // 95% < 500ms, 99% < 1s
+    http_req_failed: ['rate<0.05'],                  // Error rate < 5%
+}
+```
+
+### Analyzing Results
+Key metrics to monitor:
+- **http_req_duration:** Response time (p50, p95, p99)
+- **http_req_failed:** Failure rate percentage
+- **http_reqs:** Total requests per second (RPS)
+- **iteration_duration:** End-to-end scenario completion time
+
+### Before/After Cache Comparison
+The project includes two test scripts to measure caching impact:
+- `load-test-before-cache.js`: Baseline without Redis cache
+- `load-test-after-cache.js`: Performance with Redis caching enabled
+
+**Expected Improvements:**
+- Product list queries: ~70% faster with cache
+- Product detail queries: ~80% faster with cache
+- Overall throughput: 2-3x increase with cache
+
+For detailed K6 usage, see `docs/K6_LOAD_TEST_GUIDE.md`

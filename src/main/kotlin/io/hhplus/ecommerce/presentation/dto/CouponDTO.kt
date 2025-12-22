@@ -79,3 +79,36 @@ data class CouponListResponse(
     @Schema(description = "페이지네이션 정보")
     val pagination: Map<String, Any>
 )
+
+/**
+ * 쿠폰 발급 요청 DTO (Kafka 비동기 방식)
+ */
+@Schema(description = "쿠폰 발급 요청")
+data class IssueCouponRequest(
+    @Schema(description = "쿠폰 ID", example = "1")
+    val couponId: Long,
+
+    @Schema(description = "사용자 ID", example = "123")
+    val userId: Long
+)
+
+/**
+ * 쿠폰 발급 요청 응답 DTO (Kafka 비동기 방식)
+ */
+@Schema(description = "쿠폰 발급 요청 응답")
+data class IssueCouponResponse(
+    @Schema(description = "발급 요청 ID (멱등성 키)", example = "req-123-1-1703001234567")
+    val requestId: String,
+
+    @Schema(description = "쿠폰 ID", example = "1")
+    val couponId: Long,
+
+    @Schema(description = "사용자 ID", example = "123")
+    val userId: Long,
+
+    @Schema(description = "처리 상태", example = "PROCESSING")
+    val status: String = "PROCESSING",
+
+    @Schema(description = "메시지", example = "쿠폰 발급 요청이 접수되었습니다. 처리 중입니다.")
+    val message: String = "쿠폰 발급 요청이 접수되었습니다. 처리 중입니다."
+)

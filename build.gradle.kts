@@ -34,6 +34,9 @@ dependencies {
     // Redis & Distributed Lock
     implementation("org.redisson:redisson-spring-boot-starter:${libs.versions.redisson.get()}")
 
+    // Kafka
+    implementation("org.springframework.kafka:spring-kafka")
+
     // Jackson Kotlin Module (for JSON serialization with Kotlin data classes)
     implementation(libs.jackson.kotlin)
 
@@ -50,6 +53,7 @@ dependencies {
     testImplementation(libs.fixture.monkey.starter.kotlin)
     testImplementation(libs.bundles.testcontainers.mysql)
     testImplementation(libs.test.containers.redis)
+    testImplementation("org.springframework.kafka:spring-kafka-test")
 }
 
 // about source and compilation

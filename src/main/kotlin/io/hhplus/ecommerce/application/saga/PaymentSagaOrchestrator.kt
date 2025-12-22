@@ -44,7 +44,8 @@ class PaymentSagaOrchestrator(
     private val sagaRepository: SagaInstanceJpaRepository,
     private val idempotencyService: IdempotencyService,
     private val objectMapper: ObjectMapper,
-    private val applicationContext: org.springframework.context.ApplicationContext
+    private val applicationContext: org.springframework.context.ApplicationContext,
+    private val outboxEventService: io.hhplus.ecommerce.application.services.OutboxEventService
 ) : SagaOrchestrator<PaymentSagaRequest, PaymentSagaResponse> {
 
     // Self-reference to get Spring proxy for @Transactional propagation
@@ -283,10 +284,29 @@ class PaymentSagaOrchestrator(
     /**
      * OrderPaidEvent 발행
      *
-     * SAGA가 성공적으로 완료되면 OrderPaidEvent를 발행하여
-     * 외부 데이터 전송, 알림톡, 포인트 적립 등의 비동기 작업을 트리거합니다.
+     * SAGA가 성공적으로 완료되면:
+     * 1. Outbox 이벤트를 발행 (CDC를 통한 Kafka 발행)
+     * 2. OrderPaidEvent를 발행 (알림톡, 포인트 적립 등)
      */
     private fun publishOrderPaidEvent(order: Order) {
+        // 1. Outbox 이벤트 발행 (트랜잭션 내에서 저장)
+        // Debezium이 자동으로 Kafka로 발행
+        outboxEventService.publish(
+            aggregateType = "ORDER",
+            aggregateId = order.userId.toString(),  // 동일 userId는 같은 파티션으로
+            eventType = "ORDER_PAID",
+            payload = mapOf(
+                "orderId" to order.id,
+                "userId" to order.userId,
+                "totalAmount" to order.totalAmount,
+                "discountAmount" to order.discountAmount,
+                "finalAmount" to order.finalAmount,
+                "paidAt" to (order.paidAt ?: java.time.LocalDateTime.now()).toString()
+            )
+        )
+        logger.info("[Outbox] ORDER_PAID 이벤트 저장: orderId=${order.id}, userId=${order.userId}")
+
+        // 2. OrderPaidEvent 발행 (알림톡, 포인트 적립용)
         val event = OrderPaidEvent(
             orderId = order.id,
             userId = order.userId,
